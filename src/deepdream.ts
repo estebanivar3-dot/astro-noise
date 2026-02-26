@@ -172,6 +172,9 @@ export async function deepDream(
 ): Promise<ImageData> {
   const { layers, intensity, iterations, octaves, octaveScale } = config;
 
+  const tensorsBefore = tf.memory().numTensors;
+  console.log(`[deepDream] start — tensors: ${tensorsBefore}`);
+
   const origWidth = sourceImageData.width;
   const origHeight = sourceImageData.height;
 
@@ -277,6 +280,11 @@ export async function deepDream(
   // 6. Convert to ImageData.
   const imageData = tensorToImageData(finalTensor);
   finalTensor.dispose();
+
+  const tensorsAfter = tf.memory().numTensors;
+  console.log(
+    `[deepDream] done — tensors: ${tensorsAfter} (delta: ${tensorsAfter - tensorsBefore})`,
+  );
 
   return imageData;
 }

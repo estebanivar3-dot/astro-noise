@@ -1,4 +1,5 @@
 import './style.css';
+import * as tf from '@tensorflow/tfjs';
 import { createCanvasManager } from './canvas.ts';
 import { loadDreamModel } from './model.ts';
 import { createControls } from './controls.ts';
@@ -13,6 +14,11 @@ declare global {
 }
 
 console.log('CVLT TOOLS loaded');
+
+// Set WebGL backend for GPU-accelerated tensor operations.
+tf.setBackend('webgl').then(() => {
+  console.log(`TF.js backend: ${tf.getBackend()}`);
+});
 
 const canvasManager = createCanvasManager();
 const controls = createControls();
@@ -69,10 +75,35 @@ async function initModel(): Promise<DreamModel | null> {
     return loaded;
   } catch (err) {
     console.error('Failed to load model:', err);
-    status.textContent =
-      'Failed to load model. Make sure the converted InceptionV3 files exist ' +
-      'in public/models/inception_v3/. Run: python scripts/convert-model.py';
+    status.textContent = '';
     status.style.color = '#b91c1c';
+
+    const msg = document.createElement('span');
+    msg.textContent =
+      'Failed to load model. Ensure files exist in public/models/inception_v3/. ';
+    status.appendChild(msg);
+
+    const code = document.createElement('code');
+    code.textContent = 'python scripts/convert-model.py';
+    code.style.fontSize = '0.85em';
+    status.appendChild(code);
+
+    const retryBtn = document.createElement('button');
+    retryBtn.textContent = 'Retry';
+    retryBtn.style.marginLeft = '8px';
+    retryBtn.addEventListener('click', () => {
+      status.remove();
+      initModel().then((m) => {
+        if (m) {
+          model = m;
+          modelReady = true;
+          window.__cvlt.model = m;
+          updateDreamButton();
+        }
+      });
+    });
+    status.appendChild(retryBtn);
+
     return null;
   }
 }
