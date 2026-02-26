@@ -3,6 +3,7 @@ import { createCanvasManager } from './canvas.ts';
 import { loadDreamModel } from './model.ts';
 import { createControls } from './controls.ts';
 import { deepDream } from './deepdream.ts';
+import { exportCanvas } from './export.ts';
 import type { DreamModel } from './model.ts';
 
 declare global {
@@ -122,4 +123,13 @@ controls.onReset(() => {
   if (sourceImage) {
     canvasManager.displayImageData(sourceImage);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Export handler
+// ---------------------------------------------------------------------------
+
+const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
+exportBtn.addEventListener('click', () => {
+  exportCanvas(canvasManager.getCanvas(), 'png');
 });
