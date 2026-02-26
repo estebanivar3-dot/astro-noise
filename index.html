@@ -1,13 +1,45 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CVLT TOOLS</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CVLT TOOLS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <h1 class="app-title">CVLT TOOLS</h1>
+      <button id="export-btn" class="btn btn-primary" disabled>Export</button>
+    </header>
+    <main class="app-main">
+      <aside class="panel-left">
+        <div class="panel-content">
+          <section class="effect-section">
+            <h2 class="section-title">DeepDream</h2>
+            <div id="controls-container">
+              <!-- Controls injected by JS in Task 7 -->
+            </div>
+          </section>
+        </div>
+      </aside>
+      <section class="panel-right">
+        <div id="canvas-container" class="canvas-container">
+          <div id="drop-zone" class="drop-zone">
+            <div class="drop-zone-content">
+              <p class="drop-zone-title">Drop an image to begin</p>
+              <p class="drop-zone-subtitle">or click to browse</p>
+            </div>
+            <input type="file" id="file-input" accept="image/*" hidden />
+          </div>
+          <canvas id="canvas" hidden></canvas>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
 </html>
