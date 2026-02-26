@@ -1,0 +1,85 @@
+/**
+ * Canvas manager — handles image drop zone, canvas rendering, and source image storage.
+ */
+
+export function createCanvasManager() {
+  const dropZone = document.getElementById('drop-zone') as HTMLDivElement;
+  const fileInput = document.getElementById('file-input') as HTMLInputElement;
+  const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+  const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
+  const ctx = canvas.getContext('2d')!;
+
+  let sourceImage: ImageData | null = null;
+
+  // ---- Drop zone interactions ----
+
+  dropZone.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  dropZone.addEventListener('dragover', (e: DragEvent) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', (e: DragEvent) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files[0];
+    if (file && file.type.startsWith('image/')) {
+      loadImageFile(file);
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      loadImageFile(file);
+    }
+  });
+
+  // ---- Image loading ----
+
+  function loadImageFile(file: File): void {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      sourceImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+
+      // Toggle visibility
+      dropZone.hidden = true;
+      canvas.hidden = false;
+      exportBtn.disabled = false;
+
+      // Notify the rest of the app
+      window.dispatchEvent(new CustomEvent('cvlt:image-loaded'));
+    };
+    img.src = url;
+  }
+
+  // ---- Public API ----
+
+  function getSourceImage(): ImageData | null {
+    return sourceImage;
+  }
+
+  function displayImageData(imageData: ImageData): void {
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  function getCanvas(): HTMLCanvasElement {
+    return canvas;
+  }
+
+  return { getSourceImage, displayImageData, getCanvas };
+}
