@@ -1,7 +1,9 @@
 import './style.css';
-import { createCanvasManager } from './canvas';
-import { loadDreamModel } from './model';
-import type { DreamModel } from './model';
+import { createCanvasManager } from './canvas.ts';
+import { loadDreamModel } from './model.ts';
+import { createControls } from './controls.ts';
+import { deepDream } from './deepdream.ts';
+import type { DreamModel } from './model.ts';
 
 declare global {
   interface Window {
@@ -12,11 +14,26 @@ declare global {
 console.log('CVLT TOOLS loaded');
 
 const canvasManager = createCanvasManager();
+const controls = createControls();
 
-window.__cvlt = { canvasManager };
+window.__cvlt = { canvasManager, controls };
+
+// ---------------------------------------------------------------------------
+// Track readiness — both image and model must be available to dream
+// ---------------------------------------------------------------------------
+
+let imageReady = false;
+let modelReady = false;
+let model: DreamModel | null = null;
+
+function updateDreamButton(): void {
+  controls.setDreamEnabled(imageReady && modelReady);
+}
 
 window.addEventListener('cvlt:image-loaded', () => {
   console.log('Image loaded — source ready');
+  imageReady = true;
+  updateDreamButton();
 });
 
 // ---------------------------------------------------------------------------
@@ -39,7 +56,7 @@ async function initModel(): Promise<DreamModel | null> {
   const status = createStatusElement();
 
   try {
-    const model = await loadDreamModel((fraction: number) => {
+    const loaded = await loadDreamModel((fraction: number) => {
       const pct = Math.round(fraction * 100);
       status.textContent = `Loading model\u2026 ${pct}%`;
     });
@@ -48,7 +65,7 @@ async function initModel(): Promise<DreamModel | null> {
     setTimeout(() => status.remove(), 2000);
 
     console.log('InceptionV3 model loaded successfully');
-    return model;
+    return loaded;
   } catch (err) {
     console.error('Failed to load model:', err);
     status.textContent =
@@ -61,8 +78,48 @@ async function initModel(): Promise<DreamModel | null> {
 
 const modelPromise = initModel();
 
-modelPromise.then((model) => {
-  if (model) {
-    window.__cvlt.model = model;
+modelPromise.then((m) => {
+  if (m) {
+    model = m;
+    modelReady = true;
+    window.__cvlt.model = m;
+    updateDreamButton();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Dream / Reset handlers
+// ---------------------------------------------------------------------------
+
+controls.onDream(async () => {
+  const sourceImage = canvasManager.getSourceImage();
+  if (!sourceImage || !model) return;
+
+  const config = controls.getConfig();
+  controls.setDreaming(true);
+
+  try {
+    const totalSteps = config.octaves * config.iterations;
+
+    const result = await deepDream(sourceImage, model, config, (progress) => {
+      const step = progress.octave * config.iterations + progress.iteration + 1;
+      controls.setProgress(step, totalSteps);
+    });
+
+    canvasManager.displayImageData(result);
+    controls.setStatus('Dream complete');
+  } catch (err) {
+    console.error('DeepDream failed:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    controls.setStatus(`Error: ${message}`);
+  } finally {
+    controls.setDreaming(false);
+  }
+});
+
+controls.onReset(() => {
+  const sourceImage = canvasManager.getSourceImage();
+  if (sourceImage) {
+    canvasManager.displayImageData(sourceImage);
   }
 });
