@@ -87,9 +87,17 @@ function computeDreamGradient(
   const { grads } = tf.variableGrads(() => {
     const batch = inputVar.expandDims(0) as tf.Tensor4D;
     const activations = model.predict(batch, layerNames);
-    let loss = tf.scalar(0);
+    const toDispose: tf.Tensor[] = [batch];
+    let loss: tf.Tensor = tf.scalar(0);
+    toDispose.push(loss);
     for (const act of activations) {
-      loss = loss.add(act.mean());
+      const mean = act.mean();
+      const newLoss = loss.add(mean);
+      toDispose.push(mean, act);
+      loss = newLoss;
+    }
+    for (const t of toDispose) {
+      t.dispose();
     }
     return loss as tf.Scalar;
   });
@@ -190,7 +198,7 @@ export async function deepDream(
 
   // The working image data is held in a typed array between octaves to avoid
   // keeping GPU tensors alive across await boundaries.
-  let workingData = preprocessed.dataSync();
+  let workingData = new Float32Array(await preprocessed.data());
   preprocessed.dispose();
 
   // 3. Multi-octave loop.
@@ -202,7 +210,7 @@ export async function deepDream(
 
     // Resize working image to this octave's dimensions.
     const workTensor = tf.tensor3d(
-      Float32Array.from(workingData),
+      workingData,
       [procH, procW, 3],
     );
     const octaveImg = tf.image.resizeBilinear(
@@ -257,14 +265,14 @@ export async function deepDream(
       inputVar,
       [procH, procW],
     ) as tf.Tensor3D;
-    workingData = afterOctave.dataSync();
+    workingData = new Float32Array(await afterOctave.data());
     afterOctave.dispose();
     inputVar.dispose();
   }
 
   // 4. Deprocess from [-1, 1] to [0, 255].
   const resultTensor = tf.tidy(() => {
-    const t = tf.tensor3d(Float32Array.from(workingData), [procH, procW, 3]);
+    const t = tf.tensor3d(workingData, [procH, procW, 3]);
     return t.add(1).mul(127.5).clipByValue(0, 255) as tf.Tensor3D;
   });
 

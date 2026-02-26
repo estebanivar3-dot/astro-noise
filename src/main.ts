@@ -15,11 +15,6 @@ declare global {
 
 console.log('CVLT TOOLS loaded');
 
-// Set WebGL backend for GPU-accelerated tensor operations.
-tf.setBackend('webgl').then(() => {
-  console.log(`TF.js backend: ${tf.getBackend()}`);
-});
-
 const canvasManager = createCanvasManager();
 const controls = createControls();
 
@@ -63,6 +58,9 @@ async function initModel(): Promise<DreamModel | null> {
   const status = createStatusElement();
 
   try {
+    await tf.setBackend('webgl');
+    console.log('TF.js backend:', tf.getBackend());
+
     const loaded = await loadDreamModel((fraction: number) => {
       const pct = Math.round(fraction * 100);
       status.textContent = `Loading model\u2026 ${pct}%`;

@@ -62,6 +62,10 @@ export function createCanvasManager() {
       // Notify the rest of the app
       window.dispatchEvent(new CustomEvent('cvlt:image-loaded'));
     };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      console.error('Failed to load image file:', file.name);
+    };
     img.src = url;
   }
 

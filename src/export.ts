@@ -23,10 +23,13 @@ export function exportCanvas(
   quality?: number,
 ): void {
   const mimeType = MIME_TYPES[format];
-  const dataURL = canvas.toDataURL(mimeType, quality);
-
-  const anchor = document.createElement('a');
-  anchor.href = dataURL;
-  anchor.download = `cvlt-dream.${format}`;
-  anchor.click();
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `cvlt-dream.${format}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, mimeType, quality);
 }
