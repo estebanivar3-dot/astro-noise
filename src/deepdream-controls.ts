@@ -19,17 +19,17 @@ export type { DreamConfig };
 // ---------------------------------------------------------------------------
 
 const LAYER_DESCRIPTIONS: Record<DreamLayerName, string> = {
-  mixed0: 'Edges and strokes',
-  mixed1: 'Textures',
-  mixed2: 'Complex textures',
-  mixed3: 'Patterns and repeats',
-  mixed4: 'Proto-eyes',
-  mixed5: 'Swirls and spirals',
-  mixed6: 'Faces emerge',
-  mixed7: 'Animals and creatures',
-  mixed8: 'High-level features',
-  mixed9: 'Surreal objects',
-  mixed10: 'Full hallucination',
+  mixed0: 'Fine grain',
+  mixed1: 'Small textures',
+  mixed2: 'Woven patterns',
+  mixed3: 'Tiled repeats',
+  mixed4: 'Organic shapes',
+  mixed5: 'Swirling forms',
+  mixed6: 'Complex shapes',
+  mixed7: 'Large structures',
+  mixed8: 'Dense distortion',
+  mixed9: 'Bold warping',
+  mixed10: 'Maximum chaos',
 };
 
 // ---------------------------------------------------------------------------
@@ -93,9 +93,14 @@ export function createDeepDreamTool(callbacks: {
       }
       dreamBtn.textContent = active ? 'Dreaming\u2026' : 'Dream';
       progressGroup.style.display = active ? 'block' : 'none';
-      if (!active) {
+      if (active) {
+        progressFill.style.width = '0%';
+        statusText.textContent = 'Initializing\u2026';
+        statusText.classList.add('pulse');
+      } else {
         progressFill.style.width = '0%';
         statusText.textContent = '';
+        statusText.classList.remove('pulse');
       }
     },
 
@@ -116,10 +121,11 @@ export function createDeepDreamTool(callbacks: {
     setStatus(message: string): void {
       progressGroup.style.display = 'block';
       statusText.textContent = message;
+      statusText.classList.remove('pulse');
     },
 
     setDreamEnabled(enabled: boolean): void {
-      dreamBtn.disabled = !enabled;
+      if (dreamBtn) dreamBtn.disabled = !enabled;
     },
   };
 
@@ -150,36 +156,28 @@ export function createDeepDreamTool(callbacks: {
       const layerGroup = document.createElement('div');
       layerGroup.className = 'control-group';
 
-      const layerLabel = document.createElement('div');
-      layerLabel.className = 'control-label';
-      const layerLabelText = document.createElement('span');
-      layerLabelText.textContent = 'Layer';
-      layerLabel.appendChild(layerLabelText);
-
       layerSelect = document.createElement('select');
       for (const layer of DREAM_LAYERS) {
         const option = document.createElement('option');
         option.value = layer;
         option.textContent = `${layer} \u2014 ${LAYER_DESCRIPTIONS[layer]}`;
-        if (layer === 'mixed3') {
+        if (layer === 'mixed0') {
           option.selected = true;
         }
         layerSelect.appendChild(option);
       }
 
-      const layerHint = document.createElement('div');
-      layerHint.className = 'control-hint';
-      layerHint.textContent =
-        'What the network amplifies \u2014 lower = textures, higher = shapes and faces';
-
       const selectWrapper = document.createElement('div');
       selectWrapper.className = 'custom-select';
       selectWrapper.appendChild(layerSelect);
 
-      layerGroup.appendChild(layerLabel);
-      layerGroup.appendChild(layerHint);
       layerGroup.appendChild(selectWrapper);
       controlsContainer.appendChild(layerGroup);
+
+      // ---- Divider ----
+      const divider = document.createElement('div');
+      divider.className = 'control-divider';
+      controlsContainer.appendChild(divider);
 
       // ---- Intensity slider ----
       const { group: intensityGroup, input: iInput } = createSlider(

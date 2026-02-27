@@ -149,7 +149,9 @@ function updateDreamButton(): void {
 }
 
 function updateStylizeButton(): void {
-  styleTool.controls.setActionEnabled(imageReady && styleImageReady && styleModelReady);
+  const picker = styleTool.controls.getStylePicker();
+  const hasStyleImage = styleImageReady && picker?.getStyleImage() != null;
+  styleTool.controls.setActionEnabled(imageReady && hasStyleImage && styleModelReady);
 }
 
 window.addEventListener('cvlt:image-loaded', () => {
@@ -171,7 +173,7 @@ window.addEventListener('cvlt:style-selected', () => {
 
 function createStatusElement(): HTMLDivElement {
   const status = document.createElement('div');
-  status.className = 'model-status';
+  status.className = 'model-status pulse';
   status.textContent = 'Loading model\u2026';
 
   const rightPanelContent = document.getElementById('right-panel-content');
@@ -194,6 +196,7 @@ async function initModel(): Promise<DreamModel | null> {
     });
 
     status.textContent = 'Model ready';
+    status.classList.remove('pulse');
     setTimeout(() => status.remove(), 2000);
 
     console.log('InceptionV3 model loaded successfully');
@@ -252,8 +255,19 @@ async function initStyleModel(): Promise<StyleTransferModel | null> {
   if (styleModelLoading || styleModelReady) return styleModel;
   styleModelLoading = true;
 
+  // Free GPU memory by disposing InceptionV3 before loading style models.
+  // WebGL can't hold all three models simultaneously.
+  if (model) {
+    console.log('[model-swap] Disposing InceptionV3 to free GPU memory');
+    model.dispose();
+    model = null;
+    modelReady = false;
+    window.__cvlt.model = null;
+    updateDreamButton();
+  }
+
   const status = document.createElement('div');
-  status.className = 'model-status';
+  status.className = 'model-status pulse';
   status.textContent = 'Loading style models\u2026';
 
   const rightPanelContent = document.getElementById('right-panel-content');
@@ -273,6 +287,7 @@ async function initStyleModel(): Promise<StyleTransferModel | null> {
     });
 
     status.textContent = 'Style models ready';
+    status.classList.remove('pulse');
     setTimeout(() => status.remove(), 2000);
 
     console.log('Style Transfer models loaded successfully');
@@ -288,9 +303,9 @@ async function initStyleModel(): Promise<StyleTransferModel | null> {
     status.textContent = '';
     status.style.color = '#ef4444';
 
+    const errorMessage = err instanceof Error ? err.message : String(err);
     const msg = document.createElement('span');
-    msg.textContent =
-      'Failed to load style models. Ensure files exist in public/models/style_predictor/ and style_transformer/. ';
+    msg.textContent = `Failed to load style models: ${errorMessage} `;
     status.appendChild(msg);
 
     const retryBtn = document.createElement('button');
@@ -306,16 +321,34 @@ async function initStyleModel(): Promise<StyleTransferModel | null> {
   }
 }
 
-// Listen for tool activation to lazy-load style models.
-// The router does not emit an event, so we intercept the nav click.
+// Listen for tool activation to swap models in/out of GPU memory.
+// Only one tool's model(s) live in WebGL at a time to avoid OOM freezes.
 nav.addEventListener('click', (e: Event) => {
   const target = (e.target as HTMLElement).closest('.nav-item[data-tool]') as HTMLElement | null;
   if (!target) return;
   const toolId = target.getAttribute('data-tool');
+
   if (toolId === 'style-transfer' && !styleModelReady && !styleModelLoading) {
-    // Trigger lazy load after a microtask so the router activates the panel first.
-    queueMicrotask(() => {
-      initStyleModel();
+    queueMicrotask(() => initStyleModel());
+  } else if (toolId === 'deepdream' && !modelReady) {
+    // Returning to DeepDream — dispose style models, reload InceptionV3.
+    queueMicrotask(async () => {
+      if (styleModel) {
+        console.log('[model-swap] Disposing style transfer models');
+        styleModel.dispose();
+        styleModel = null;
+        styleModelReady = false;
+        styleModelLoading = false;
+        window.__cvlt.styleModel = null;
+      }
+
+      const loaded = await initModel();
+      if (loaded) {
+        model = loaded;
+        modelReady = true;
+        window.__cvlt.model = loaded;
+        updateDreamButton();
+      }
     });
   }
 });

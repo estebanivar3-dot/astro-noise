@@ -7,6 +7,7 @@ export function createCanvasManager() {
   const fileInput = document.getElementById('file-input') as HTMLInputElement;
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
+  const canvasInfo = document.querySelector('.canvas-info') as HTMLSpanElement | null;
   const ctx = canvas.getContext('2d')!;
 
   let sourceImage: ImageData | null = null;
@@ -53,6 +54,10 @@ export function createCanvasManager() {
       ctx.drawImage(img, 0, 0);
       sourceImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
+
+      if (canvasInfo) {
+        canvasInfo.textContent = `${img.naturalWidth} x ${img.naturalHeight}`;
+      }
 
       // Toggle visibility
       dropZone.hidden = true;

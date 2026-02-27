@@ -9,13 +9,13 @@
   --bg-dark: #0a0a0a;
   --bg-canvas: #141414;
   --fg: #e8e8e8;
-  --fg-dim: #666666;
-  --fg-muted: #444444;
+  --fg-dim: #999999;
+  --fg-muted: #777777;
   --accent: #e8e8e8;
   --border: #2a2a2a;
   --border-active: #555555;
-  --panel-width: 300px;
-  --panel-right-width: 280px;
+  --panel-width: 340px;
+  --panel-right-width: 360px;
   --font: 'JetBrains Mono', 'Courier New', monospace;
 }
 
@@ -25,7 +25,7 @@ body {
   color: var(--fg);
   height: 100vh;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 #app {
@@ -59,14 +59,14 @@ body {
 }
 
 .brand {
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: 0.15em;
   color: var(--fg);
 }
 
 .brand-sub {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--fg-dim);
   margin-top: 4px;
   letter-spacing: 0.08em;
@@ -76,7 +76,7 @@ body {
 .version {
   display: inline-block;
   margin-top: 8px;
-  font-size: 9px;
+  font-size: 11px;
   color: var(--fg-muted);
   letter-spacing: 0.04em;
 }
@@ -89,8 +89,8 @@ body {
 
 .nav-item {
   display: block;
-  padding: 5px 0;
-  font-size: 11px;
+  padding: 6px 0;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-muted);
@@ -125,9 +125,9 @@ body {
 }
 
 .nav-item .coming-soon {
-  font-size: 8px;
+  font-size: 10px;
   color: var(--fg-muted);
-  margin-left: 4px;
+  margin-left: 6px;
 }
 
 /* === Panel Content === */
@@ -138,7 +138,7 @@ body {
 }
 
 .section-label {
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--fg-muted);
@@ -146,6 +146,12 @@ body {
 }
 
 /* === Control Styles === */
+.control-divider {
+  height: 1px;
+  background: var(--border);
+  margin-bottom: 20px;
+}
+
 .control-group {
   margin-bottom: 20px;
 }
@@ -159,19 +165,19 @@ body {
 }
 
 .control-label span {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--fg);
 }
 
 .control-label .value {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--fg-dim);
   font-variant-numeric: tabular-nums;
 }
 
 .control-hint {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--fg-muted);
   margin-bottom: 8px;
   line-height: 1.5;
@@ -215,8 +221,8 @@ input[type="range"]::-moz-range-thumb {
 
 .custom-select select {
   width: 100%;
-  padding: 10px 36px 10px 12px;
-  font-size: 10px;
+  padding: 12px 40px 12px 14px;
+  font-size: 13px;
   font-family: var(--font);
   border: 1px solid var(--border);
   border-radius: 0;
@@ -239,10 +245,10 @@ input[type="range"]::-moz-range-thumb {
 .custom-select::after {
   content: '\25BE';
   position: absolute;
-  right: 12px;
+  right: 14px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 10px;
+  font-size: 13px;
   pointer-events: none;
   color: var(--fg-dim);
 }
@@ -250,8 +256,8 @@ input[type="range"]::-moz-range-thumb {
 /* Fallback for native selects without wrapper */
 select {
   width: 100%;
-  padding: 10px 12px;
-  font-size: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
   font-family: var(--font);
   border: 1px solid var(--border);
   border-radius: 0;
@@ -266,11 +272,11 @@ select {
 /* === Buttons === */
 .btn {
   font-family: var(--font);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border: 1px solid var(--border);
   cursor: pointer;
   transition: all 0.15s;
@@ -324,11 +330,11 @@ select {
 .btn-export {
   width: 100%;
   font-family: var(--font);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--fg-muted);
@@ -350,9 +356,9 @@ select {
 }
 
 .shortcut {
-  font-size: 8px;
+  font-size: 10px;
   color: var(--fg-muted);
-  padding: 2px 5px;
+  padding: 3px 6px;
   border: 1px solid var(--border);
 }
 
@@ -430,7 +436,7 @@ select {
   position: absolute;
   top: 18px;
   right: 56px;
-  font-size: 8px;
+  font-size: 11px;
   color: var(--fg-muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -472,13 +478,13 @@ select {
 }
 
 .drop-icon {
-  font-size: 24px;
+  font-size: 32px;
   margin-bottom: 16px;
   color: var(--fg-muted);
 }
 
 .drop-zone-title {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -486,17 +492,17 @@ select {
 }
 
 .drop-zone-subtitle {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--fg-muted);
   margin-top: 6px;
 }
 
 .drop-formats {
-  font-size: 8px;
+  font-size: 11px;
   color: var(--fg-muted);
   margin-top: 16px;
   letter-spacing: 0.06em;
-  padding: 4px 8px;
+  padding: 5px 10px;
   border: 1px solid var(--border);
   display: inline-block;
 }
@@ -536,7 +542,7 @@ select {
 }
 
 .status-text {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--fg-dim);
   margin-top: 8px;
   letter-spacing: 0.04em;
@@ -544,10 +550,10 @@ select {
 
 /* === Model Status === */
 .model-status {
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--bg-canvas);
   border: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 13px;
   color: var(--fg-dim);
   text-align: center;
   margin-bottom: 16px;
@@ -576,20 +582,20 @@ select {
 }
 
 .style-drop-zone .drop-icon {
-  font-size: 18px;
+  font-size: 24px;
   margin-bottom: 10px;
 }
 
 .style-drop-zone .drop-zone-title {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .style-drop-zone .drop-zone-subtitle {
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .style-drop-zone .drop-formats {
-  font-size: 7px;
+  font-size: 10px;
   margin-top: 10px;
 }
 
@@ -619,7 +625,7 @@ select {
 }
 
 .style-change-hint {
-  font-size: 8px;
+  font-size: 11px;
   color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -636,4 +642,14 @@ select {
 }
 .panel-content::-webkit-scrollbar-thumb {
   background: var(--border);
+}
+
+/* === Pulse animation for loading/progress text === */
+.pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }

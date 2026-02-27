@@ -60,10 +60,21 @@ export function createStyleTransferTool(callbacks: {
       for (const el of interactiveElements) {
         el.disabled = active;
       }
-      stylizeBtn.textContent = active ? 'Stylizing\u2026' : 'Stylize';
-      progressGroup.style.display = active ? 'block' : 'none';
-      if (!active) {
-        progressFill.style.width = '0%';
+      if (stylizeBtn) stylizeBtn.textContent = active ? 'Stylizing\u2026' : 'Stylize';
+      if (progressGroup) {
+        progressGroup.style.display = active ? 'block' : 'none';
+        if (!active && progressFill) {
+          progressFill.style.width = '0%';
+        }
+      }
+      if (statusText) {
+        if (active) {
+          statusText.textContent = 'Stylizing\u2026';
+          statusText.classList.add('pulse');
+        } else {
+          statusText.textContent = '';
+          statusText.classList.remove('pulse');
+        }
       }
     },
 
@@ -76,12 +87,12 @@ export function createStyleTransferTool(callbacks: {
     },
 
     setStatus(message: string): void {
-      progressGroup.style.display = 'block';
-      statusText.textContent = message;
+      if (progressGroup) progressGroup.style.display = 'block';
+      if (statusText) statusText.textContent = message;
     },
 
     setActionEnabled(enabled: boolean): void {
-      stylizeBtn.disabled = !enabled;
+      if (stylizeBtn) stylizeBtn.disabled = !enabled;
     },
 
     getStylePicker(): StylePicker | null {
