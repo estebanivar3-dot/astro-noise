@@ -6,38 +6,61 @@
   <title>CVLT TOOLS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <div id="app">
-    <header class="app-header">
-      <h1 class="app-title">CVLT TOOLS</h1>
-      <button id="export-btn" class="btn btn-primary" disabled>Export</button>
-    </header>
     <main class="app-main">
       <aside class="panel-left">
-        <div class="panel-content">
-          <section class="effect-section">
-            <h2 class="section-title">DeepDream</h2>
-            <div id="controls-container">
-              <!-- Controls injected by JS in Task 7 -->
-            </div>
-          </section>
+        <div class="sidebar-header">
+          <div class="brand">CVLT TOOLS</div>
+          <div class="brand-sub">Image Destruction Toolkit</div>
+          <span class="version">v0.2.0</span>
+        </div>
+
+        <nav class="nav" id="tool-nav">
+          <a class="nav-item active" data-tool="deepdream">DeepDream</a>
+          <a class="nav-item" data-tool="style-transfer">Style Transfer</a>
+          <a class="nav-item disabled">Glitch <span class="coming-soon">soon</span></a>
+          <a class="nav-item disabled">Pixel Sort <span class="coming-soon">soon</span></a>
+          <a class="nav-item disabled">Dither <span class="coming-soon">soon</span></a>
+          <a class="nav-item disabled">Displace <span class="coming-soon">soon</span></a>
+        </nav>
+
+        <div class="panel-content" id="left-panel-content">
+          <!-- Tool-specific left content injected by router -->
         </div>
       </aside>
-      <section class="panel-right">
+      <section class="panel-center">
+        <div class="corner-tr"></div>
+        <div class="corner-bl"></div>
+        <span class="canvas-info">512 x 512</span>
         <div id="canvas-container" class="canvas-container">
           <div id="drop-zone" class="drop-zone">
             <div class="drop-zone-content">
-              <p class="drop-zone-title">Drop an image to begin</p>
+              <div class="drop-icon">+</div>
+              <p class="drop-zone-title">Drop an image</p>
               <p class="drop-zone-subtitle">or click to browse</p>
+              <p class="drop-formats">.jpg .png .webp</p>
             </div>
             <input type="file" id="file-input" accept="image/*" hidden />
           </div>
           <canvas id="canvas" hidden></canvas>
         </div>
       </section>
+      <aside class="panel-right">
+        <div class="panel-content" id="right-panel-content">
+          <div id="controls-container"></div>
+        </div>
+        <div class="action-bar" id="action-bar"></div>
+        <div class="panel-footer">
+          <button id="export-btn" class="btn-export" disabled>
+            <span>Export PNG</span>
+            <span class="shortcut">&#8984;S</span>
+          </button>
+        </div>
+      </aside>
     </main>
   </div>
   <script type="module" src="/src/main.ts"></script>
