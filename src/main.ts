@@ -6,7 +6,11 @@ import { createDeepDreamTool } from './deepdream-controls.ts';
 import { createRouter } from './router.ts';
 import { deepDream } from './deepdream.ts';
 import { exportCanvas } from './export.ts';
+import { createStyleTransferTool } from './style-transfer/controls.ts';
+import { loadStyleTransferModel } from './style-transfer/model.ts';
+import { stylizeImage } from './style-transfer/stylize.ts';
 import type { DreamModel } from './model.ts';
+import type { StyleTransferModel } from './style-transfer/model.ts';
 
 declare global {
   interface Window {
@@ -37,7 +41,7 @@ const router = createRouter({
 });
 
 // ---------------------------------------------------------------------------
-// Track readiness — both image and model must be available to dream
+// Track readiness — DeepDream: image + model
 // ---------------------------------------------------------------------------
 
 let imageReady = false;
@@ -84,26 +88,85 @@ const dreamTool = createDeepDreamTool({
 });
 
 router.register(dreamTool);
+
+// ---------------------------------------------------------------------------
+// Style Transfer tool
+// ---------------------------------------------------------------------------
+
+let styleModelReady = false;
+let styleModel: StyleTransferModel | null = null;
+let styleImageReady = false;
+let styleModelLoading = false;
+
+const styleTool = createStyleTransferTool({
+  onStylize: async () => {
+    const sourceImage = canvasManager.getSourceImage();
+    const picker = styleTool.controls.getStylePicker();
+    const styleImage = picker?.getStyleImage() ?? null;
+    if (!sourceImage || !styleImage || !styleModel) return;
+
+    const config = styleTool.controls.getConfig();
+    styleTool.controls.setStylizing(true);
+    styleTool.controls.setStatus('Stylizing\u2026');
+
+    try {
+      const result = await stylizeImage(sourceImage, styleImage, styleModel, config);
+      canvasManager.displayImageData(result);
+      styleTool.controls.setStatus('Stylization complete');
+    } catch (err) {
+      console.error('Style transfer failed:', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      styleTool.controls.setStatus(`Error: ${message}`);
+    } finally {
+      styleTool.controls.setStylizing(false);
+    }
+  },
+
+  onReset: () => {
+    const sourceImage = canvasManager.getSourceImage();
+    if (sourceImage) {
+      canvasManager.displayImageData(sourceImage);
+    }
+  },
+});
+
+router.register(styleTool);
+
+// ---------------------------------------------------------------------------
+// Activate default tool and expose debug API
+// ---------------------------------------------------------------------------
+
 router.activate('deepdream');
 
 window.__cvlt = { canvasManager, router };
 
 // ---------------------------------------------------------------------------
-// Readiness gate — enable Dream button when image + model are both ready
+// Readiness gates
 // ---------------------------------------------------------------------------
 
 function updateDreamButton(): void {
   dreamTool.controls.setDreamEnabled(imageReady && modelReady);
 }
 
+function updateStylizeButton(): void {
+  styleTool.controls.setActionEnabled(imageReady && styleImageReady && styleModelReady);
+}
+
 window.addEventListener('cvlt:image-loaded', () => {
-  console.log('Image loaded — source ready');
+  console.log('Image loaded \u2014 source ready');
   imageReady = true;
   updateDreamButton();
+  updateStylizeButton();
+});
+
+window.addEventListener('cvlt:style-selected', () => {
+  console.log('Style image selected');
+  styleImageReady = true;
+  updateStylizeButton();
 });
 
 // ---------------------------------------------------------------------------
-// Model loading with progress UI
+// DeepDream model loading (eager — starts on app load)
 // ---------------------------------------------------------------------------
 
 function createStatusElement(): HTMLDivElement {
@@ -178,6 +241,82 @@ modelPromise.then((m) => {
     modelReady = true;
     window.__cvlt.model = m;
     updateDreamButton();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Style Transfer model loading (lazy — loads on first tool activation)
+// ---------------------------------------------------------------------------
+
+async function initStyleModel(): Promise<StyleTransferModel | null> {
+  if (styleModelLoading || styleModelReady) return styleModel;
+  styleModelLoading = true;
+
+  const status = document.createElement('div');
+  status.className = 'model-status';
+  status.textContent = 'Loading style models\u2026';
+
+  const rightPanelContent = document.getElementById('right-panel-content');
+  if (rightPanelContent) {
+    rightPanelContent.prepend(status);
+  }
+
+  try {
+    // Ensure WebGL backend is active (may already be set by DeepDream).
+    if (!tf.getBackend()) {
+      await tf.setBackend('webgl');
+    }
+
+    const loaded = await loadStyleTransferModel((fraction: number) => {
+      const pct = Math.round(fraction * 100);
+      status.textContent = `Loading style models\u2026 ${pct}%`;
+    });
+
+    status.textContent = 'Style models ready';
+    setTimeout(() => status.remove(), 2000);
+
+    console.log('Style Transfer models loaded successfully');
+    styleModel = loaded;
+    styleModelReady = true;
+    styleModelLoading = false;
+    window.__cvlt.styleModel = loaded;
+    updateStylizeButton();
+    return loaded;
+  } catch (err) {
+    console.error('Failed to load style models:', err);
+    styleModelLoading = false;
+    status.textContent = '';
+    status.style.color = '#ef4444';
+
+    const msg = document.createElement('span');
+    msg.textContent =
+      'Failed to load style models. Ensure files exist in public/models/style_predictor/ and style_transformer/. ';
+    status.appendChild(msg);
+
+    const retryBtn = document.createElement('button');
+    retryBtn.textContent = 'Retry';
+    retryBtn.style.marginLeft = '8px';
+    retryBtn.addEventListener('click', () => {
+      status.remove();
+      initStyleModel();
+    });
+    status.appendChild(retryBtn);
+
+    return null;
+  }
+}
+
+// Listen for tool activation to lazy-load style models.
+// The router does not emit an event, so we intercept the nav click.
+nav.addEventListener('click', (e: Event) => {
+  const target = (e.target as HTMLElement).closest('.nav-item[data-tool]') as HTMLElement | null;
+  if (!target) return;
+  const toolId = target.getAttribute('data-tool');
+  if (toolId === 'style-transfer' && !styleModelReady && !styleModelLoading) {
+    // Trigger lazy load after a microtask so the router activates the panel first.
+    queueMicrotask(() => {
+      initStyleModel();
+    });
   }
 });
 
