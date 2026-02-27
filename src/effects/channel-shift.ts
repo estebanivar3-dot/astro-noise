@@ -86,7 +86,7 @@ const channelShiftEffect: PixelEffect = {
 export const channelShiftDef: EffectToolDef = {
   effect: channelShiftEffect,
   sliders: [
-    { key: 'intensity', label: 'Intensity', min: 1, max: 80, step: 1, defaultValue: 20, hint: 'How far channels drift apart' },
+    { key: 'intensity', label: 'Intensity', min: 1, max: 300, step: 1, defaultValue: 40, hint: 'How far channels drift apart' },
   ],
   modes: [
     { key: 'mode', modes: ['Split', 'Cross', 'Tri-angle', 'Circular'], defaultIndex: 0 },

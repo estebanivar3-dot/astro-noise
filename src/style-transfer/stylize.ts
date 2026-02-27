@@ -27,6 +27,38 @@ export const DEFAULT_STYLE_CONFIG: StyleConfig = {
 // ---------------------------------------------------------------------------
 
 /**
+ * Downscale an ImageData so that its longest edge is at most `maxDim`.
+ * Returns the original if already small enough.
+ */
+function downscaleImageData(source: ImageData, maxDim: number): ImageData {
+  const { width, height } = source;
+  if (width <= maxDim && height <= maxDim) return source;
+
+  const scale = maxDim / Math.max(width, height);
+  const newW = Math.round(width * scale);
+  const newH = Math.round(height * scale);
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = newW;
+  offscreen.height = newH;
+  const ctx = offscreen.getContext('2d')!;
+
+  // Draw source ImageData onto a temp canvas first
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = width;
+  srcCanvas.height = height;
+  srcCanvas.getContext('2d')!.putImageData(source, 0, 0);
+
+  ctx.drawImage(srcCanvas, 0, 0, newW, newH);
+  return ctx.getImageData(0, 0, newW, newH);
+}
+
+/** Yield to the event loop so the browser can repaint progress updates. */
+function yieldToUI(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
  * Stylise a content image using a style reference image.
  *
  * This is a single forward pass through two small models — typically
@@ -36,6 +68,7 @@ export const DEFAULT_STYLE_CONFIG: StyleConfig = {
  * @param styleImageData   - Style reference image from the picker.
  * @param model            - Loaded StyleTransferModel (predictor + transformer).
  * @param config           - Style parameters (currently just strength).
+ * @param onProgress       - Optional callback (0-1) to report inference progress.
  * @returns A new ImageData containing the stylised result at content dimensions.
  */
 export async function stylizeImage(
@@ -43,19 +76,32 @@ export async function stylizeImage(
   styleImageData: ImageData,
   model: StyleTransferModel,
   config: StyleConfig = DEFAULT_STYLE_CONFIG,
+  onProgress?: (fraction: number) => void,
 ): Promise<ImageData> {
   const tensorsBefore = tf.memory().numTensors;
   console.log(`[stylize] start — tensors: ${tensorsBefore}`);
 
+  // Cap resolution to avoid WebGL OOM / multi-second freezes.
+  const MAX_DIM = 1024;
+  const scaledContent = downscaleImageData(contentImageData, MAX_DIM);
+  const scaledStyle = downscaleImageData(styleImageData, MAX_DIM);
+
   try {
+    onProgress?.(0.05);
+    await yieldToUI();
+
     // 1. Compute style bottleneck from the style image.
-    const styleBottleneck = model.predictStyle(styleImageData);
+    const styleBottleneck = model.predictStyle(scaledStyle);
+    onProgress?.(0.25);
+    await yieldToUI();
 
     // 2. If strength < 1, interpolate with content bottleneck.
     let finalBottleneck: tf.Tensor4D;
 
     if (config.strength < 1.0) {
-      const contentBottleneck = model.predictStyle(contentImageData);
+      const contentBottleneck = model.predictStyle(scaledContent);
+      onProgress?.(0.4);
+      await yieldToUI();
 
       finalBottleneck = tf.tidy(() => {
         const s = tf.scalar(config.strength);
@@ -73,9 +119,14 @@ export async function stylizeImage(
       finalBottleneck = styleBottleneck;
     }
 
+    onProgress?.(0.5);
+    await yieldToUI();
+
     // 3. Run the transformer.
-    const resultTensor = model.stylize(contentImageData, finalBottleneck);
+    const resultTensor = model.stylize(scaledContent, finalBottleneck);
     finalBottleneck.dispose();
+    onProgress?.(0.85);
+    await yieldToUI();
 
     // 4. Convert [H, W, 3] float32 (values in [0, 1]) to ImageData.
     const scaled = tf.tidy(() => {
@@ -85,6 +136,8 @@ export async function stylizeImage(
 
     const imageData = tensorToImageData(scaled);
     scaled.dispose();
+
+    onProgress?.(1.0);
 
     const tensorsAfter = tf.memory().numTensors;
     console.log(

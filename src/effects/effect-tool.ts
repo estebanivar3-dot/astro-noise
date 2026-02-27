@@ -30,8 +30,11 @@ export function createEffectTool(
 
   let isInteractiveMode = false;
   let getConfigFn: (() => EffectConfig) | null = null;
+  let rafId = 0;
+  let showingOriginal = false;
 
   function refresh(): void {
+    if (showingOriginal) return;
     const source = callbacks.getSourceImage();
     if (!source || !getConfigFn) return;
 
@@ -61,6 +64,11 @@ export function createEffectTool(
     }
   }
 
+  function debouncedRefresh(): void {
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => refresh());
+  }
+
   const tool: Tool = {
     id: effect.id,
     label: effect.label,
@@ -83,7 +91,7 @@ export function createEffectTool(
           const { group, getMode } = createModeToggle(modeDef.modes, modeDef.defaultIndex ?? 0);
           modeGetters[modeDef.key] = getMode;
           controlsContainer.appendChild(group);
-          group.addEventListener('click', () => refresh());
+          group.addEventListener('click', () => debouncedRefresh());
         }
       }
 
@@ -97,7 +105,7 @@ export function createEffectTool(
         );
         sliderInputs[sliderDef.key] = input;
         interactiveElements.push(input);
-        input.addEventListener('input', () => refresh());
+        input.addEventListener('input', () => debouncedRefresh());
         controlsContainer.appendChild(group);
       }
 
@@ -123,15 +131,15 @@ export function createEffectTool(
         const modeGroup = document.createElement('div');
         modeGroup.className = 'control-group';
 
-        const fullBtn = document.createElement('button');
-        fullBtn.className = 'btn btn-secondary';
-        fullBtn.style.flex = '1';
-        fullBtn.textContent = 'Full Image';
-
         const interBtn = document.createElement('button');
         interBtn.className = 'btn btn-secondary';
         interBtn.style.flex = '1';
         interBtn.textContent = 'Interactive';
+
+        const fullBtn = document.createElement('button');
+        fullBtn.className = 'btn btn-secondary';
+        fullBtn.style.flex = '1';
+        fullBtn.textContent = 'Full Image';
 
         const modeRow = document.createElement('div');
         modeRow.style.display = 'flex';
@@ -148,10 +156,18 @@ export function createEffectTool(
 
         const { group: bsGroup, input: brushSizeInput } = createSlider('Brush Size', 5, 100, 1, 20);
         brushSizeGroup = bsGroup;
-        brushSizeGroup.style.display = 'none';
         brushSizeInput.addEventListener('input', () => {
           brush.setBrushRadius(parseInt(brushSizeInput.value, 10));
         });
+
+        // Start in interactive mode by default
+        isInteractiveMode = true;
+        brush.setInteractionType(effect.interactionType);
+        if (effect.interactionType === 'area-paint' || effect.interactionType === 'smear') {
+          brushSizeGroup.style.display = 'block';
+        } else {
+          brushSizeGroup.style.display = 'none';
+        }
 
         fullBtn.addEventListener('click', () => {
           isInteractiveMode = false;
@@ -172,8 +188,9 @@ export function createEffectTool(
           refresh();
         });
 
-        modeRow.appendChild(fullBtn);
+        // Interactive first (left), Full Image second (right)
         modeRow.appendChild(interBtn);
+        modeRow.appendChild(fullBtn);
         modeGroup.appendChild(modeRow);
         controlsContainer.appendChild(modeGroup);
         controlsContainer.appendChild(brushSizeGroup);
@@ -183,7 +200,7 @@ export function createEffectTool(
 
       // Tonal targeting
       tonalCtrl.mount(controlsContainer);
-      tonalCtrl.onChange(() => refresh());
+      tonalCtrl.onChange(() => debouncedRefresh());
       interactiveElements.push(...tonalCtrl.getInteractiveElements());
 
       // Action buttons
@@ -197,6 +214,36 @@ export function createEffectTool(
       resetBtn.className = 'btn btn-secondary';
       resetBtn.style.flex = '1';
       resetBtn.textContent = 'Reset';
+
+      // Show Original button (hold to preview source)
+      const origBtn = document.createElement('button');
+      origBtn.className = 'btn btn-secondary';
+      origBtn.style.flex = '0 0 auto';
+      origBtn.style.padding = '14px 12px';
+      origBtn.style.fontSize = '11px';
+      origBtn.textContent = 'SRC';
+      origBtn.title = 'Hold to show original (\\)';
+
+      function showOriginal(): void {
+        showingOriginal = true;
+        const source = callbacks.getSourceImage();
+        if (source) callbacks.displayImageData(source);
+        origBtn.style.background = 'var(--fg)';
+        origBtn.style.color = 'var(--bg-dark)';
+      }
+
+      function hideOriginal(): void {
+        showingOriginal = false;
+        origBtn.style.background = 'transparent';
+        origBtn.style.color = 'var(--fg-dim)';
+        refresh();
+      }
+
+      origBtn.addEventListener('mousedown', showOriginal);
+      origBtn.addEventListener('mouseup', hideOriginal);
+      origBtn.addEventListener('mouseleave', () => {
+        if (showingOriginal) hideOriginal();
+      });
 
       applyBtn.addEventListener('click', () => {
         compositor.apply();
@@ -215,26 +262,39 @@ export function createEffectTool(
       });
 
       actionBar.appendChild(applyBtn);
+      actionBar.appendChild(origBtn);
       actionBar.appendChild(resetBtn);
 
       // Wire up brush controller
       const canvas = canvasContainer.querySelector('canvas') as HTMLCanvasElement | null;
       if (canvas) {
         brush.attach(canvas);
-        brush.onChange(() => refresh());
+        brush.onChange(() => debouncedRefresh());
         brush.onStrokeEnd(() => compositor.pushHistory());
       }
 
-      // Keyboard shortcut: Cmd+Z for undo
+      // Keyboard shortcuts
       function onKeyDown(e: KeyboardEvent): void {
+        // Cmd+Z for undo
         if ((e.metaKey || e.ctrlKey) && e.key === 'z' && isInteractiveMode) {
           e.preventDefault();
           if (compositor.undo()) {
             refresh();
           }
         }
+        // Backslash for show original
+        if (e.key === '\\') {
+          e.preventDefault();
+          showOriginal();
+        }
+      }
+      function onKeyUp(e: KeyboardEvent): void {
+        if (e.key === '\\' && showingOriginal) {
+          hideOriginal();
+        }
       }
       window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
 
       // Enable Apply when image loads
       function onImageLoaded(): void {
@@ -256,12 +316,15 @@ export function createEffectTool(
           applyBtn.disabled = !enabled;
         },
         destroy(): void {
+          cancelAnimationFrame(rafId);
           brush.detach();
           compositor.destroy();
           window.removeEventListener('keydown', onKeyDown);
+          window.removeEventListener('keyup', onKeyUp);
           window.removeEventListener('cvlt:image-loaded', onImageLoaded);
           getConfigFn = null;
           isInteractiveMode = false;
+          showingOriginal = false;
         },
       };
     },

@@ -29,7 +29,7 @@ const moshEffect: PixelEffect = {
       return (seed - 1) / 2147483646;
     }
 
-    const numOps = Math.round(20 + intensity * 80);
+    const numOps = Math.round(30 + intensity * 120);
 
     switch (mode) {
       case 1: {
@@ -97,8 +97,8 @@ const moshEffect: PixelEffect = {
 export const moshDef: EffectToolDef = {
   effect: moshEffect,
   sliders: [
-    { key: 'intensity', label: 'Intensity', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'How corrupted the output looks' },
-    { key: 'blockSize', label: 'Block Size', min: 4, max: 64, step: 2, defaultValue: 16, hint: 'Size of displaced blocks' },
+    { key: 'intensity', label: 'Intensity', min: 0, max: 200, step: 1, defaultValue: 80, hint: 'How corrupted the output looks' },
+    { key: 'blockSize', label: 'Block Size', min: 4, max: 128, step: 2, defaultValue: 24, hint: 'Size of displaced blocks' },
   ],
   modes: [
     { key: 'mode', modes: ['Block Shift', 'Row Glitch', 'Byte Corrupt'], defaultIndex: 0 },

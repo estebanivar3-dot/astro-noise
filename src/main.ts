@@ -18,6 +18,7 @@ import { channelShiftDef } from './effects/channel-shift.ts';
 import { lcdDef } from './effects/lcd.ts';
 import { burnDef } from './effects/burn.ts';
 import { pixltDef } from './effects/pixlt.ts';
+import { noiseDef } from './effects/noise.ts';
 import { fillDef } from './effects/fill.ts';
 import { gradientDef } from './effects/gradient.ts';
 import { moshDef } from './effects/mosh.ts';
@@ -117,10 +118,12 @@ const styleTool = createStyleTransferTool({
 
     const config = styleTool.controls.getConfig();
     styleTool.controls.setStylizing(true);
-    styleTool.controls.setStatus('Stylizing\u2026');
+    styleTool.controls.setProgress(0);
 
     try {
-      const result = await stylizeImage(sourceImage, styleImage, styleModel, config);
+      const result = await stylizeImage(sourceImage, styleImage, styleModel, config, (fraction) => {
+        styleTool.controls.setProgress(fraction);
+      });
       canvasManager.displayImageData(result);
       styleTool.controls.setStatus('Stylization complete');
     } catch (err) {
@@ -153,7 +156,7 @@ const effectCallbacks: EffectToolCallbacks = {
   onReset: () => canvasManager.resetToOriginal(),
 };
 
-const effectDefs = [thresholdDef, channelShiftDef, lcdDef, burnDef, pixltDef, fillDef, gradientDef, moshDef];
+const effectDefs = [thresholdDef, channelShiftDef, lcdDef, burnDef, pixltDef, noiseDef, fillDef, gradientDef, moshDef];
 
 for (const def of effectDefs) {
   router.register(createEffectTool(def, effectCallbacks));

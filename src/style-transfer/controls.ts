@@ -24,6 +24,8 @@ export interface StyleTransferControlsManager {
   onReset(callback: () => void): void;
   /** Update the status text directly. */
   setStatus(message: string): void;
+  /** Update the progress bar fill (0-1 fraction). */
+  setProgress(fraction: number): void;
   /** Enable or disable the Stylize button externally. */
   setActionEnabled(enabled: boolean): void;
   /** Access the style picker (for reading the style image). */
@@ -90,6 +92,16 @@ export function createStyleTransferTool(callbacks: {
     setStatus(message: string): void {
       if (progressGroup) progressGroup.style.display = 'block';
       if (statusText) statusText.textContent = message;
+    },
+
+    setProgress(fraction: number): void {
+      if (progressFill) {
+        progressFill.style.width = `${Math.round(fraction * 100)}%`;
+      }
+      if (statusText) {
+        const pct = Math.round(fraction * 100);
+        statusText.textContent = pct < 100 ? `Stylizing… ${pct}%` : 'Finalizing…';
+      }
     },
 
     setActionEnabled(enabled: boolean): void {

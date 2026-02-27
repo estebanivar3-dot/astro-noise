@@ -82,28 +82,30 @@ const lcdEffect: PixelEffect = {
       }
     }
 
-    // Pass 2: Scanline grid
-    const gridStrength = Math.min(1, intensity / 60);
+    // Pass 2: Subtle scanline grid (displacement is the star)
+    const gridAmt = (config['grid'] ?? 20) / 100;
 
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const col = x % 3;
-        const dimFactor = 0.15 + (1 - gridStrength) * 0.85;
-        const boostFactor = 1 + gridStrength * 1.5;
+    if (gridAmt > 0) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          const col = x % 3;
+          const dimFactor = 1 - gridAmt * 0.5;
+          const boostFactor = 1 + gridAmt * 0.6;
 
-        if (col === 0) {
-          dst[i]     = clamp(Math.round(dst[i] * boostFactor), 0, 255);
-          dst[i + 1] = clamp(Math.round(dst[i + 1] * dimFactor), 0, 255);
-          dst[i + 2] = clamp(Math.round(dst[i + 2] * dimFactor), 0, 255);
-        } else if (col === 1) {
-          dst[i]     = clamp(Math.round(dst[i] * dimFactor), 0, 255);
-          dst[i + 1] = clamp(Math.round(dst[i + 1] * boostFactor), 0, 255);
-          dst[i + 2] = clamp(Math.round(dst[i + 2] * dimFactor), 0, 255);
-        } else {
-          dst[i]     = clamp(Math.round(dst[i] * dimFactor), 0, 255);
-          dst[i + 1] = clamp(Math.round(dst[i + 1] * dimFactor), 0, 255);
-          dst[i + 2] = clamp(Math.round(dst[i + 2] * boostFactor), 0, 255);
+          if (col === 0) {
+            dst[i]     = clamp(Math.round(dst[i] * boostFactor), 0, 255);
+            dst[i + 1] = clamp(Math.round(dst[i + 1] * dimFactor), 0, 255);
+            dst[i + 2] = clamp(Math.round(dst[i + 2] * dimFactor), 0, 255);
+          } else if (col === 1) {
+            dst[i]     = clamp(Math.round(dst[i] * dimFactor), 0, 255);
+            dst[i + 1] = clamp(Math.round(dst[i + 1] * boostFactor), 0, 255);
+            dst[i + 2] = clamp(Math.round(dst[i + 2] * dimFactor), 0, 255);
+          } else {
+            dst[i]     = clamp(Math.round(dst[i] * dimFactor), 0, 255);
+            dst[i + 1] = clamp(Math.round(dst[i + 1] * dimFactor), 0, 255);
+            dst[i + 2] = clamp(Math.round(dst[i + 2] * boostFactor), 0, 255);
+          }
         }
       }
     }
@@ -115,7 +117,8 @@ const lcdEffect: PixelEffect = {
 export const lcdDef: EffectToolDef = {
   effect: lcdEffect,
   sliders: [
-    { key: 'intensity', label: 'Intensity', min: 1, max: 100, step: 1, defaultValue: 30, hint: 'Channel separation + scanline strength' },
+    { key: 'intensity', label: 'Displacement', min: 1, max: 150, step: 1, defaultValue: 30, hint: 'How far RGB channels separate' },
+    { key: 'grid', label: 'Scanline Grid', min: 0, max: 100, step: 1, defaultValue: 20, hint: 'Strength of the RGB sub-pixel grid' },
   ],
   modes: [
     { key: 'mode', modes: ['Directional', 'Horizontal', 'Vertical', 'Radial'], defaultIndex: 0 },

@@ -1,5 +1,7 @@
 /**
- * Gradient — maps a color gradient across the image via blend modes.
+ * Gradient Map — maps pixel luminance to a color gradient.
+ * Like Photoshop's gradient map: dark pixels get one color, bright pixels get another.
+ * In interactive/directional mode, dragging shifts the gradient colors randomly.
  */
 
 import type { PixelEffect, EffectConfig, EffectToolDef } from './types.ts';
@@ -8,79 +10,103 @@ function clamp(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
 }
 
+interface ColorStop {
+  r: number;
+  g: number;
+  b: number;
+}
+
+function hslToRgb(h: number, s: number, l: number): ColorStop {
+  if (s === 0) {
+    const v = Math.round(l * 255);
+    return { r: v, g: v, b: v };
+  }
+  function hue2rgb(p: number, q: number, t: number): number {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return {
+    r: Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+    g: Math.round(hue2rgb(p, q, h) * 255),
+    b: Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
+  };
+}
+
+function generateGradientStops(seed: number, numStops: number): ColorStop[] {
+  let s = ((seed % 2147483647) + 2147483647) % 2147483647 || 1;
+  function rand(): number {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  }
+
+  const stops: ColorStop[] = [];
+  for (let i = 0; i < numStops; i++) {
+    const h = rand();
+    const sat = 0.5 + rand() * 0.5;
+    const l = (i / (numStops - 1));
+    stops.push(hslToRgb(h, sat, l * 0.7 + 0.15));
+  }
+  return stops;
+}
+
+function lerpColor(a: ColorStop, b: ColorStop, t: number): ColorStop {
+  return {
+    r: a.r + (b.r - a.r) * t,
+    g: a.g + (b.g - a.g) * t,
+    b: a.b + (b.b - a.b) * t,
+  };
+}
+
+function sampleGradient(stops: ColorStop[], t: number): ColorStop {
+  if (t <= 0) return stops[0];
+  if (t >= 1) return stops[stops.length - 1];
+  const segment = t * (stops.length - 1);
+  const idx = Math.floor(segment);
+  const frac = segment - idx;
+  return lerpColor(stops[idx], stops[Math.min(idx + 1, stops.length - 1)], frac);
+}
+
 const gradientEffect: PixelEffect = {
   id: 'gradient',
   label: 'Gradient',
-  interactionType: 'none',
+  interactionType: 'directional',
 
   apply(source: ImageData, config: EffectConfig): ImageData {
-    const angle = ((config['angle'] ?? 0) * Math.PI) / 180;
-    const blendMode = config['blendMode'] ?? 0;
-    const intensity = (config['intensity'] ?? 70) / 100;
+    const intensity = (config['intensity'] ?? 80) / 100;
+    const colorSeed = Math.round(config['colorSeed'] ?? 42);
+    const numStops = Math.max(2, Math.round(config['stops'] ?? 4));
+    const dirX = config['directionX'] ?? 0;
+    const dirY = config['directionY'] ?? 0;
+
+    // Use drag direction to shift the seed for interactive randomization
+    const dragMag = Math.sqrt(dirX * dirX + dirY * dirY);
+    const effectiveSeed = colorSeed + Math.round(dragMag * 0.1);
+
+    const stops = generateGradientStops(effectiveSeed, numStops);
     const { width, height, data } = source;
     const out = new ImageData(width, height);
     const dst = out.data;
 
-    const colA = { r: 255, g: 100, b: 0 };
-    const colB = { r: 0, g: 80, b: 255 };
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
 
-    const cosA = Math.cos(angle);
-    const sinA = Math.sin(angle);
-    const cx = width / 2;
-    const cy = height / 2;
-    const maxDist = Math.sqrt(cx * cx + cy * cy);
+      // Luminance
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
+      const mapped = sampleGradient(stops, lum);
 
-        const dx = x - cx;
-        const dy = y - cy;
-        const proj = (dx * cosA + dy * sinA) / maxDist;
-        const t = (proj + 1) / 2;
-
-        const gr = colA.r + (colB.r - colA.r) * t;
-        const gg = colA.g + (colB.g - colA.g) * t;
-        const gb = colA.b + (colB.b - colA.b) * t;
-
-        const sr = data[i];
-        const sg = data[i + 1];
-        const sb = data[i + 2];
-
-        let br: number, bg: number, bb: number;
-
-        switch (blendMode) {
-          case 1:
-            br = (sr * gr) / 255;
-            bg = (sg * gg) / 255;
-            bb = (sb * gb) / 255;
-            break;
-          case 2:
-            br = 255 - ((255 - sr) * (255 - gr)) / 255;
-            bg = 255 - ((255 - sg) * (255 - gg)) / 255;
-            bb = 255 - ((255 - sb) * (255 - gb)) / 255;
-            break;
-          case 3: {
-            const lum = 0.299 * sr + 0.587 * sg + 0.114 * sb;
-            const gLum = 0.299 * gr + 0.587 * gg + 0.114 * gb;
-            const ratio = gLum > 0 ? lum / gLum : 1;
-            br = gr * ratio;
-            bg = gg * ratio;
-            bb = gb * ratio;
-            break;
-          }
-          default:
-            br = sr < 128 ? (2 * sr * gr) / 255 : 255 - (2 * (255 - sr) * (255 - gr)) / 255;
-            bg = sg < 128 ? (2 * sg * gg) / 255 : 255 - (2 * (255 - sg) * (255 - gg)) / 255;
-            bb = sb < 128 ? (2 * sb * gb) / 255 : 255 - (2 * (255 - sb) * (255 - gb)) / 255;
-            break;
-        }
-
-        dst[i]     = clamp(sr + (br - sr) * intensity);
-        dst[i + 1] = clamp(sg + (bg - sg) * intensity);
-        dst[i + 2] = clamp(sb + (bb - sb) * intensity);
-        dst[i + 3] = data[i + 3];
-      }
+      dst[i]     = clamp(r + (mapped.r - r) * intensity);
+      dst[i + 1] = clamp(g + (mapped.g - g) * intensity);
+      dst[i + 2] = clamp(b + (mapped.b - b) * intensity);
+      dst[i + 3] = data[i + 3];
     }
 
     return out;
@@ -90,11 +116,8 @@ const gradientEffect: PixelEffect = {
 export const gradientDef: EffectToolDef = {
   effect: gradientEffect,
   sliders: [
-    { key: 'angle', label: 'Angle', min: 0, max: 360, step: 5, defaultValue: 45, hint: 'Gradient direction in degrees' },
-    { key: 'intensity', label: 'Intensity', min: 0, max: 100, step: 1, defaultValue: 70, hint: 'How strongly the gradient blends' },
+    { key: 'intensity', label: 'Intensity', min: 0, max: 100, step: 1, defaultValue: 80, hint: 'Blend between original and mapped colors' },
+    { key: 'colorSeed', label: 'Color Seed', min: 1, max: 999, step: 1, defaultValue: 42, hint: 'Change to get different color palettes' },
+    { key: 'stops', label: 'Color Stops', min: 2, max: 8, step: 1, defaultValue: 4, hint: 'Number of colors in the gradient' },
   ],
-  modes: [
-    { key: 'blendMode', modes: ['Overlay', 'Multiply', 'Screen', 'Color'], defaultIndex: 0 },
-  ],
-  supportsInteractive: false,
 };
