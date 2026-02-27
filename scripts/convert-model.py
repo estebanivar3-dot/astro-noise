@@ -6,11 +6,18 @@ Downloads the pretrained InceptionV3 model from Keras applications,
 prints all mixed layer names for reference, then converts and saves
 the model in TF.js LayersModel format.
 
+IMPORTANT: Uses TF_USE_LEGACY_KERAS=1 to ensure Keras 2 output format,
+which is compatible with TF.js loadLayersModel(). Keras 3 format uses
+'batch_shape' which TF.js doesn't recognize.
+
 Output: public/models/inception_v3/model.json + weight shard .bin files
 """
 
 import os
 import pathlib
+
+# Force Keras 2 format for TF.js compatibility
+os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 import tensorflow as tf
 import tensorflowjs as tfjs
@@ -29,7 +36,7 @@ print("Loading InceptionV3 (include_top=False, imagenet weights) ...")
 base_model = tf.keras.applications.InceptionV3(
     include_top=False,
     weights="imagenet",
-    input_shape=(None, None, 3),
+    input_shape=(512, 512, 3),
 )
 print(f"Model loaded: {base_model.name}")
 print(f"  Input shape : {base_model.input_shape}")
