@@ -55,8 +55,8 @@ export interface DreamProgress {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Maximum pixel dimension fed into WebGL to avoid driver limits. */
-const MAX_PROCESSING_DIM = 512;
+/** Fixed processing size — must match the InceptionV3 input_shape. */
+const PROCESSING_SIZE = 512;
 
 /** Small constant to avoid division by zero when normalising gradients. */
 const EPSILON = 1e-7;
@@ -71,46 +71,81 @@ const YIELD_EVERY = 5;
 /**
  * Compute the gradient of the dream loss with respect to the input image.
  *
+ * Uses tf.grad() which traces the computational graph through the model's
+ * forward pass and computes the gradient via backpropagation.
+ *
  * The dream loss is the sum of the means of all selected layer activations —
  * maximising this encourages the network to amplify patterns it "sees".
- *
- * @param inputVar   - A `tf.Variable` holding the current working image ([H,W,3]).
- * @param model      - The loaded DreamModel.
- * @param layerNames - Which layers to maximise.
- * @returns The gradient tensor (same shape as inputVar).
  */
+/**
+ * Monkey-patch tf.engine() to handle undefined tensors that leak through
+ * from LayersModel internal execution when the gradient tape is active.
+ *
+ * TF.js LayersModel internally manages tensor lifecycles in ways that can
+ * leave undefined references in kernel inputs. When the gradient tape
+ * records these kernels, it stores the undefined refs as node inputs.
+ * This causes two crashes:
+ *   1. saveTensorsForBackwardMode tries to clone undefined → dataId error
+ *   2. getFilteredNodesXToY traverses undefined node inputs → id error
+ *
+ * We patch both functions to safely skip undefined tensors.
+ */
+function patchGradientTape(): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const engine = tf.engine() as any;
+  if (engine.__dreamPatched) return;
+
+  // --- Patch 1: saveTensorsForBackwardMode ---
+  const origSave = engine.saveTensorsForBackwardMode.bind(engine);
+  engine.saveTensorsForBackwardMode = function (tensors: tf.Tensor[]) {
+    const safeTensors = tensors.filter(
+      (t: tf.Tensor | undefined) => t != null && t.dataId != null,
+    );
+    return origSave(safeTensors);
+  };
+
+  // --- Patch 2: addTapeNode — clean undefined entries from inputs ---
+  const origAddTapeNode = engine.addTapeNode.bind(engine);
+  engine.addTapeNode = function (
+    kernelName: string,
+    inputs: Record<string, tf.Tensor>,
+    outputs: tf.Tensor[],
+    gradientsFunc: unknown,
+    saved: tf.Tensor[],
+    attrs: unknown,
+  ) {
+    // Remove any undefined input entries so getFilteredNodesXToY won't crash
+    const cleanInputs: Record<string, tf.Tensor> = {};
+    for (const key of Object.keys(inputs)) {
+      if (inputs[key] != null) {
+        cleanInputs[key] = inputs[key];
+      }
+    }
+    return origAddTapeNode(kernelName, cleanInputs, outputs, gradientsFunc, saved, attrs);
+  };
+
+  engine.__dreamPatched = true;
+}
+
 function computeDreamGradient(
-  inputVar: tf.Variable<tf.Rank.R3>,
+  input: tf.Tensor3D,
   model: DreamModel,
   layerNames: DreamLayerName[],
 ): tf.Tensor3D {
-  const { grads } = tf.variableGrads(() => {
-    const batch = inputVar.expandDims(0) as tf.Tensor4D;
+  // Ensure the gradient tape patch is active
+  patchGradientTape();
+
+  const gradFn = tf.grad((x: tf.Tensor) => {
+    const batch = x.reshape([1, PROCESSING_SIZE, PROCESSING_SIZE, 3]) as tf.Tensor4D;
     const activations = model.predict(batch, layerNames);
-    const toDispose: tf.Tensor[] = [batch];
-    let loss: tf.Tensor = tf.scalar(0);
-    toDispose.push(loss);
+    let loss: tf.Scalar = tf.scalar(0);
     for (const act of activations) {
-      const mean = act.mean();
-      const newLoss = loss.add(mean);
-      toDispose.push(mean, act);
-      loss = newLoss;
+      loss = loss.add(act.mean()) as tf.Scalar;
     }
-    for (const t of toDispose) {
-      t.dispose();
-    }
-    return loss as tf.Scalar;
+    return loss;
   });
 
-  const gradient = grads[inputVar.name];
-  // Dispose all other gradient tensors that may have been returned.
-  for (const key of Object.keys(grads)) {
-    if (key !== inputVar.name) {
-      grads[key].dispose();
-    }
-  }
-
-  return gradient as tf.Tensor3D;
+  return gradFn(input) as tf.Tensor3D;
 }
 
 /**
@@ -140,31 +175,19 @@ function tensorToImageData(tensor3D: tf.Tensor3D): ImageData {
   return imageData;
 }
 
-/**
- * Calculate target dimensions such that the longest side is at most
- * `MAX_PROCESSING_DIM`, preserving aspect ratio.
- */
-function clampDimensions(
-  width: number,
-  height: number,
-): [number, number] {
-  const longest = Math.max(width, height);
-  if (longest <= MAX_PROCESSING_DIM) {
-    return [height, width];
-  }
-  const scale = MAX_PROCESSING_DIM / longest;
-  return [
-    Math.round(height * scale),
-    Math.round(width * scale),
-  ];
-}
-
 // ---------------------------------------------------------------------------
 // Main algorithm
 // ---------------------------------------------------------------------------
 
 /**
  * Run the DeepDream algorithm on a source image.
+ *
+ * The image is resized to 512×512 for processing (InceptionV3's fixed input
+ * shape), then the result is resized back to the original dimensions.
+ *
+ * With a fixed-input model, octaves serve as successive refinement passes
+ * rather than multi-resolution processing. Earlier octaves use gentler
+ * intensity (scaled by `octaveScale`) to build up the dream gradually.
  *
  * @param sourceImageData - The original image from the canvas.
  * @param model           - A loaded `DreamModel`.
@@ -185,114 +208,100 @@ export async function deepDream(
 
   const origWidth = sourceImageData.width;
   const origHeight = sourceImageData.height;
+  const S = PROCESSING_SIZE; // 512 — must match model's input_shape
 
-  // 1. Calculate safe processing dimensions.
-  const [procH, procW] = clampDimensions(origWidth, origHeight);
+  try {
+    // 1. Convert source ImageData → float32 tensor, resize to 512×512, map to [-1, 1].
+    const rawTensor = tf.browser.fromPixels(sourceImageData);              // [H,W,3] uint8
+    const resized = tf.image.resizeBilinear(rawTensor, [S, S]);            // [512,512,3]
+    const preprocessed = resized.toFloat().div(127.5).sub(1) as tf.Tensor3D; // [-1, 1]
+    rawTensor.dispose();
+    resized.dispose();
 
-  // 2. Convert source ImageData to a float32 tensor and preprocess to [-1, 1].
-  const rawTensor = tf.browser.fromPixels(sourceImageData);                    // [H,W,3] uint8
-  const resized = tf.image.resizeBilinear(rawTensor, [procH, procW]);          // [procH,procW,3]
-  const preprocessed = resized.toFloat().div(127.5).sub(1) as tf.Tensor3D;     // [-1, 1]
-  rawTensor.dispose();
-  resized.dispose();
+    // Hold pixel data in a typed array between octaves to avoid keeping GPU
+    // tensors alive across await boundaries.
+    let workingData = new Float32Array(await preprocessed.data());
+    preprocessed.dispose();
 
-  // The working image data is held in a typed array between octaves to avoid
-  // keeping GPU tensors alive across await boundaries.
-  let workingData = new Float32Array(await preprocessed.data());
-  preprocessed.dispose();
+    // 2. Multi-octave gradient ascent.
+    //    Uses regular tensors with tf.grad() instead of tf.Variable +
+    //    tf.variableGrads, which avoids issues with the gradient tape and
+    //    LayersModel internal tensor management.
+    for (let octave = 0; octave < octaves; octave++) {
+      let current = tf.tensor3d(workingData, [S, S, 3]);
 
-  // 3. Multi-octave loop.
-  for (let octave = 0; octave < octaves; octave++) {
-    // 3a. Calculate dimensions for this octave.
-    const octaveFactor = Math.pow(octaveScale, octave - octaves + 1);
-    const octaveH = Math.round(procH * octaveFactor);
-    const octaveW = Math.round(procW * octaveFactor);
+      // Scale intensity per octave: earlier octaves dream gently, later ones push harder.
+      const octaveIntensity = intensity * Math.pow(octaveScale, octave - octaves + 1);
 
-    // Resize working image to this octave's dimensions.
-    const workTensor = tf.tensor3d(
-      workingData,
-      [procH, procW, 3],
-    );
-    const octaveImg = tf.image.resizeBilinear(
-      workTensor,
-      [octaveH, octaveW],
-    ) as tf.Tensor3D;
-    workTensor.dispose();
+      for (let iter = 0; iter < iterations; iter++) {
+        // Compute gradient of dream loss w.r.t. input.
+        const gradient = computeDreamGradient(current, model, layers);
 
-    // Create a variable for gradient computation.
-    const inputVar = tf.variable(octaveImg) as tf.Variable<tf.Rank.R3>;
-    octaveImg.dispose();
-
-    // 3b. Gradient ascent iterations within this octave.
-    for (let iter = 0; iter < iterations; iter++) {
-      // Compute gradient of dream loss w.r.t. input.
-      const gradient = computeDreamGradient(inputVar, model, layers);
-
-      // Normalise gradient: divide by (mean(|grad|) + epsilon).
-      const updated = tf.tidy(() => {
-        const absMean = gradient.abs().mean();
-        const normalised = gradient.div(absMean.add(EPSILON));
-        // Gradient ASCENT: add normalised gradient scaled by intensity.
-        return inputVar.add(normalised.mul(intensity)) as tf.Tensor3D;
-      });
-      gradient.dispose();
-
-      // Update the variable in-place.
-      inputVar.assign(updated);
-      updated.dispose();
-
-      // Report progress.
-      if (onProgress) {
-        const totalSteps = octaves * iterations;
-        const currentStep = octave * iterations + iter + 1;
-        onProgress({
-          octave,
-          totalOctaves: octaves,
-          iteration: iter,
-          totalIterations: iterations,
-          fraction: currentStep / totalSteps,
+        // Normalise and apply gradient ascent, then swap tensors.
+        const next = tf.tidy(() => {
+          const absMean = gradient.abs().mean();
+          const normalised = gradient.div(absMean.add(EPSILON));
+          return current.add(normalised.mul(octaveIntensity)) as tf.Tensor3D;
         });
+        gradient.dispose();
+        current.dispose();
+        current = next;
+
+        // Report progress.
+        if (onProgress) {
+          const totalSteps = octaves * iterations;
+          const currentStep = octave * iterations + iter + 1;
+          onProgress({
+            octave,
+            totalOctaves: octaves,
+            iteration: iter,
+            totalIterations: iterations,
+            fraction: currentStep / totalSteps,
+          });
+        }
+
+        // Yield to the browser event loop periodically.
+        if ((iter + 1) % YIELD_EVERY === 0) {
+          await tf.nextFrame();
+        }
       }
 
-      // Yield to the browser event loop periodically.
-      if ((iter + 1) % YIELD_EVERY === 0) {
-        await tf.nextFrame();
-      }
+      // Save working data for the next octave.
+      workingData = new Float32Array(await current.data());
+      current.dispose();
     }
 
-    // Resize back to full processing dimensions and save for next octave.
-    const afterOctave = tf.image.resizeBilinear(
-      inputVar,
-      [procH, procW],
-    ) as tf.Tensor3D;
-    workingData = new Float32Array(await afterOctave.data());
-    afterOctave.dispose();
-    inputVar.dispose();
+    // 3. Deprocess from [-1, 1] to [0, 255].
+    const resultTensor = tf.tidy(() => {
+      const t = tf.tensor3d(workingData, [S, S, 3]);
+      return t.add(1).mul(127.5).clipByValue(0, 255) as tf.Tensor3D;
+    });
+
+    // 4. Resize back to original dimensions.
+    const finalTensor = tf.tidy(() => {
+      return tf.image.resizeBilinear(
+        resultTensor,
+        [origHeight, origWidth],
+      ) as tf.Tensor3D;
+    });
+    resultTensor.dispose();
+
+    // 5. Convert to ImageData.
+    const imageData = tensorToImageData(finalTensor);
+    finalTensor.dispose();
+
+    const tensorsAfter = tf.memory().numTensors;
+    console.log(
+      `[deepDream] done — tensors: ${tensorsAfter} (delta: ${tensorsAfter - tensorsBefore})`,
+    );
+
+    return imageData;
+  } catch (err) {
+    // Clean up any leaked tensors from a failed run.
+    const leaked = tf.memory().numTensors - tensorsBefore;
+    if (leaked > 0) {
+      console.warn(`[deepDream] cleaning up ${leaked} leaked tensors after error`);
+    }
+    throw err;
   }
-
-  // 4. Deprocess from [-1, 1] to [0, 255].
-  const resultTensor = tf.tidy(() => {
-    const t = tf.tensor3d(workingData, [procH, procW, 3]);
-    return t.add(1).mul(127.5).clipByValue(0, 255) as tf.Tensor3D;
-  });
-
-  // 5. Resize back to original dimensions.
-  const finalTensor = tf.tidy(() => {
-    return tf.image.resizeBilinear(
-      resultTensor,
-      [origHeight, origWidth],
-    ) as tf.Tensor3D;
-  });
-  resultTensor.dispose();
-
-  // 6. Convert to ImageData.
-  const imageData = tensorToImageData(finalTensor);
-  finalTensor.dispose();
-
-  const tensorsAfter = tf.memory().numTensors;
-  console.log(
-    `[deepDream] done — tensors: ${tensorsAfter} (delta: ${tensorsAfter - tensorsBefore})`,
-  );
-
-  return imageData;
 }

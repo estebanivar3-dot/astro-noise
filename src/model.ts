@@ -83,7 +83,10 @@ export async function loadDreamModel(
       subModelCache.set(cacheKey, subModel);
     }
 
-    const result = subModel.predict(input);
+    // Use apply() instead of predict() — predict() internally wraps
+    // execution in tidy() which disposes intermediate tensors needed
+    // for gradient backpropagation. apply() preserves the gradient chain.
+    const result = subModel.apply(input) as tf.Tensor | tf.Tensor[];
 
     // Normalise to an array regardless of single vs multiple outputs.
     if (Array.isArray(result)) {
