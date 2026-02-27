@@ -11,6 +11,7 @@ export function createCanvasManager() {
   const ctx = canvas.getContext('2d')!;
 
   let sourceImage: ImageData | null = null;
+  let originalSource: ImageData | null = null;
 
   // ---- Drop zone interactions ----
 
@@ -53,6 +54,7 @@ export function createCanvasManager() {
       canvas.height = img.naturalHeight;
       ctx.drawImage(img, 0, 0);
       sourceImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      originalSource = sourceImage;
       URL.revokeObjectURL(url);
 
       if (canvasInfo) {
@@ -90,5 +92,21 @@ export function createCanvasManager() {
     return canvas;
   }
 
-  return { getSourceImage, displayImageData, getCanvas };
+  function setSourceImage(imageData: ImageData): void {
+    sourceImage = imageData;
+    displayImageData(imageData);
+  }
+
+  function getOriginalSource(): ImageData | null {
+    return originalSource;
+  }
+
+  function resetToOriginal(): void {
+    if (originalSource) {
+      sourceImage = originalSource;
+      displayImageData(originalSource);
+    }
+  }
+
+  return { getSourceImage, displayImageData, getCanvas, setSourceImage, getOriginalSource, resetToOriginal };
 }

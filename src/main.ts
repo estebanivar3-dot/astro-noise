@@ -11,6 +11,16 @@ import { loadStyleTransferModel } from './style-transfer/model.ts';
 import { stylizeImage } from './style-transfer/stylize.ts';
 import type { DreamModel } from './model.ts';
 import type { StyleTransferModel } from './style-transfer/model.ts';
+import { createEffectTool } from './effects/effect-tool.ts';
+import type { EffectToolCallbacks } from './effects/effect-tool.ts';
+import { thresholdDef } from './effects/threshold.ts';
+import { channelShiftDef } from './effects/channel-shift.ts';
+import { lcdDef } from './effects/lcd.ts';
+import { burnDef } from './effects/burn.ts';
+import { pixltDef } from './effects/pixlt.ts';
+import { fillDef } from './effects/fill.ts';
+import { gradientDef } from './effects/gradient.ts';
+import { moshDef } from './effects/mosh.ts';
 
 declare global {
   interface Window {
@@ -131,6 +141,23 @@ const styleTool = createStyleTransferTool({
 });
 
 router.register(styleTool);
+
+// ---------------------------------------------------------------------------
+// Pixel effect tools (no model loading needed)
+// ---------------------------------------------------------------------------
+
+const effectCallbacks: EffectToolCallbacks = {
+  getSourceImage: () => canvasManager.getSourceImage(),
+  displayImageData: (img: ImageData) => canvasManager.displayImageData(img),
+  onApply: (newSource: ImageData) => canvasManager.setSourceImage(newSource),
+  onReset: () => canvasManager.resetToOriginal(),
+};
+
+const effectDefs = [thresholdDef, channelShiftDef, lcdDef, burnDef, pixltDef, fillDef, gradientDef, moshDef];
+
+for (const def of effectDefs) {
+  router.register(createEffectTool(def, effectCallbacks));
+}
 
 // ---------------------------------------------------------------------------
 // Activate default tool and expose debug API
@@ -348,6 +375,25 @@ nav.addEventListener('click', (e: Event) => {
         modelReady = true;
         window.__cvlt.model = loaded;
         updateDreamButton();
+      }
+    });
+  } else if (toolId !== 'style-transfer' && toolId !== 'deepdream') {
+    // Switching to a glitch tool — free GPU memory if models are loaded
+    queueMicrotask(() => {
+      if (model) {
+        console.log('[model-swap] Disposing InceptionV3 for glitch tool');
+        model.dispose();
+        model = null;
+        modelReady = false;
+        window.__cvlt.model = null;
+      }
+      if (styleModel) {
+        console.log('[model-swap] Disposing style models for glitch tool');
+        styleModel.dispose();
+        styleModel = null;
+        styleModelReady = false;
+        styleModelLoading = false;
+        window.__cvlt.styleModel = null;
       }
     });
   }

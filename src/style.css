@@ -116,20 +116,6 @@ body {
   color: var(--fg);
 }
 
-.nav-item.disabled {
-  cursor: default;
-}
-
-.nav-item.disabled:hover {
-  color: var(--fg-muted);
-}
-
-.nav-item .coming-soon {
-  font-size: 10px;
-  color: var(--fg-muted);
-  margin-left: 6px;
-}
-
 /* === Panel Content === */
 .panel-content {
   flex: 1;
@@ -642,6 +628,18 @@ select {
 }
 .panel-content::-webkit-scrollbar-thumb {
   background: var(--border);
+}
+
+/* === Mode Toggle Buttons === */
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.mode-toggle .btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 12px;
 }
 
 /* === Pulse animation for loading/progress text === */
