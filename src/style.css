@@ -554,6 +554,79 @@ select {
   letter-spacing: 0.04em;
 }
 
+/* === Style Picker (left panel drop zone variant) === */
+.style-drop-zone {
+  width: 100%;
+  height: 200px;
+  border: 1px dashed var(--border);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.style-drop-zone[hidden] {
+  display: none;
+}
+
+.style-drop-zone:hover,
+.style-drop-zone.drag-over {
+  border-color: var(--border-active);
+}
+
+.style-drop-zone .drop-icon {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.style-drop-zone .drop-zone-title {
+  font-size: 10px;
+}
+
+.style-drop-zone .drop-zone-subtitle {
+  font-size: 8px;
+}
+
+.style-drop-zone .drop-formats {
+  font-size: 7px;
+  margin-top: 10px;
+}
+
+/* Style image thumbnail preview */
+.style-preview {
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.style-preview[hidden] {
+  display: none;
+}
+
+.style-preview:hover {
+  border-color: var(--border-active);
+}
+
+.style-preview.drag-over {
+  border-color: var(--border-active);
+}
+
+.style-thumbnail {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--border);
+}
+
+.style-change-hint {
+  font-size: 8px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 6px;
+  text-align: center;
+}
+
 /* Scrollbar */
 .panel-content::-webkit-scrollbar {
   width: 4px;
