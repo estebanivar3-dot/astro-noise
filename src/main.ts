@@ -2,7 +2,8 @@ import './style.css';
 import * as tf from '@tensorflow/tfjs';
 import { createCanvasManager } from './canvas.ts';
 import { loadDreamModel } from './model.ts';
-import { createControls } from './controls.ts';
+import { createDeepDreamTool } from './deepdream-controls.ts';
+import { createRouter } from './router.ts';
 import { deepDream } from './deepdream.ts';
 import { exportCanvas } from './export.ts';
 import type { DreamModel } from './model.ts';
@@ -16,9 +17,24 @@ declare global {
 console.log('CVLT TOOLS loaded');
 
 const canvasManager = createCanvasManager();
-const controls = createControls();
 
-window.__cvlt = { canvasManager, controls };
+// ---------------------------------------------------------------------------
+// Router setup
+// ---------------------------------------------------------------------------
+
+const nav = document.getElementById('tool-nav')!;
+const leftContent = document.getElementById('left-panel-content')!;
+const controlsContainer = document.getElementById('controls-container')!;
+const actionBar = document.getElementById('action-bar')!;
+const canvasContainer = document.getElementById('canvas-container')!;
+
+const router = createRouter({
+  nav,
+  leftContent,
+  controlsContainer,
+  actionBar,
+  canvasContainer,
+});
 
 // ---------------------------------------------------------------------------
 // Track readiness — both image and model must be available to dream
@@ -28,8 +44,56 @@ let imageReady = false;
 let modelReady = false;
 let model: DreamModel | null = null;
 
+// ---------------------------------------------------------------------------
+// DeepDream tool
+// ---------------------------------------------------------------------------
+
+const dreamTool = createDeepDreamTool({
+  onDream: async () => {
+    const sourceImage = canvasManager.getSourceImage();
+    if (!sourceImage || !model) return;
+
+    const config = dreamTool.controls.getConfig();
+    dreamTool.controls.setDreaming(true);
+
+    try {
+      const totalSteps = config.octaves * config.iterations;
+
+      const result = await deepDream(sourceImage, model, config, (progress) => {
+        const step = progress.octave * config.iterations + progress.iteration + 1;
+        dreamTool.controls.setProgress(step, totalSteps);
+      });
+
+      canvasManager.displayImageData(result);
+      dreamTool.controls.setStatus('Dream complete');
+    } catch (err) {
+      console.error('DeepDream failed:', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      dreamTool.controls.setStatus(`Error: ${message}`);
+    } finally {
+      dreamTool.controls.setDreaming(false);
+    }
+  },
+
+  onReset: () => {
+    const sourceImage = canvasManager.getSourceImage();
+    if (sourceImage) {
+      canvasManager.displayImageData(sourceImage);
+    }
+  },
+});
+
+router.register(dreamTool);
+router.activate('deepdream');
+
+window.__cvlt = { canvasManager, router };
+
+// ---------------------------------------------------------------------------
+// Readiness gate — enable Dream button when image + model are both ready
+// ---------------------------------------------------------------------------
+
 function updateDreamButton(): void {
-  controls.setDreamEnabled(imageReady && modelReady);
+  dreamTool.controls.setDreamEnabled(imageReady && modelReady);
 }
 
 window.addEventListener('cvlt:image-loaded', () => {
@@ -47,9 +111,9 @@ function createStatusElement(): HTMLDivElement {
   status.className = 'model-status';
   status.textContent = 'Loading model\u2026';
 
-  const panelContent = document.querySelector('.panel-content');
-  if (panelContent) {
-    panelContent.prepend(status);
+  const rightPanelContent = document.getElementById('right-panel-content');
+  if (rightPanelContent) {
+    rightPanelContent.prepend(status);
   }
   return status;
 }
@@ -74,7 +138,7 @@ async function initModel(): Promise<DreamModel | null> {
   } catch (err) {
     console.error('Failed to load model:', err);
     status.textContent = '';
-    status.style.color = '#b91c1c';
+    status.style.color = '#ef4444';
 
     const msg = document.createElement('span');
     msg.textContent =
@@ -118,44 +182,7 @@ modelPromise.then((m) => {
 });
 
 // ---------------------------------------------------------------------------
-// Dream / Reset handlers
-// ---------------------------------------------------------------------------
-
-controls.onDream(async () => {
-  const sourceImage = canvasManager.getSourceImage();
-  if (!sourceImage || !model) return;
-
-  const config = controls.getConfig();
-  controls.setDreaming(true);
-
-  try {
-    const totalSteps = config.octaves * config.iterations;
-
-    const result = await deepDream(sourceImage, model, config, (progress) => {
-      const step = progress.octave * config.iterations + progress.iteration + 1;
-      controls.setProgress(step, totalSteps);
-    });
-
-    canvasManager.displayImageData(result);
-    controls.setStatus('Dream complete');
-  } catch (err) {
-    console.error('DeepDream failed:', err);
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    controls.setStatus(`Error: ${message}`);
-  } finally {
-    controls.setDreaming(false);
-  }
-});
-
-controls.onReset(() => {
-  const sourceImage = canvasManager.getSourceImage();
-  if (sourceImage) {
-    canvasManager.displayImageData(sourceImage);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Export handler
+// Export handler (shared across all tools)
 // ---------------------------------------------------------------------------
 
 const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
