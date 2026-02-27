@@ -7,6 +7,7 @@ import type { Tool, ToolControls } from '../router.ts';
 import type { StyleConfig } from './stylize.ts';
 import type { StylePicker } from './style-picker.ts';
 import { createStylePicker } from './style-picker.ts';
+import { createSlider } from '../effects/ui-helpers.ts';
 
 // ---------------------------------------------------------------------------
 // Controls manager interface (parallel to DeepDream's ControlsManager)
@@ -200,54 +201,3 @@ export function createStyleTransferTool(callbacks: {
   return tool;
 }
 
-// ---------------------------------------------------------------------------
-// Slider helper (same pattern as deepdream-controls.ts)
-// ---------------------------------------------------------------------------
-
-function createSlider(
-  label: string,
-  min: number,
-  max: number,
-  step: number,
-  defaultValue: number,
-  hint?: string,
-): { group: HTMLDivElement; input: HTMLInputElement; valueEl: HTMLSpanElement } {
-  const group = document.createElement('div');
-  group.className = 'control-group';
-
-  const labelRow = document.createElement('div');
-  labelRow.className = 'control-label';
-
-  const labelText = document.createElement('span');
-  labelText.textContent = label;
-
-  const valueEl = document.createElement('span');
-  valueEl.className = 'value';
-  valueEl.textContent = String(defaultValue);
-
-  labelRow.appendChild(labelText);
-  labelRow.appendChild(valueEl);
-  group.appendChild(labelRow);
-
-  if (hint) {
-    const hintEl = document.createElement('div');
-    hintEl.className = 'control-hint';
-    hintEl.textContent = hint;
-    group.appendChild(hintEl);
-  }
-
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  input.value = String(defaultValue);
-
-  input.addEventListener('input', () => {
-    valueEl.textContent = input.value;
-  });
-
-  group.appendChild(input);
-
-  return { group, input, valueEl };
-}

@@ -7,6 +7,7 @@ import { DREAM_LAYERS } from './model.ts';
 import type { DreamLayerName } from './model.ts';
 import type { DreamConfig } from './deepdream.ts';
 import type { Tool, ToolControls } from './router.ts';
+import { createSlider } from './effects/ui-helpers.ts';
 
 // ---------------------------------------------------------------------------
 // Re-exports for main.ts backward compatibility
@@ -271,54 +272,3 @@ export function createDeepDreamTool(callbacks: {
   return tool;
 }
 
-// ---------------------------------------------------------------------------
-// Slider helper (unchanged from original controls.ts)
-// ---------------------------------------------------------------------------
-
-function createSlider(
-  label: string,
-  min: number,
-  max: number,
-  step: number,
-  defaultValue: number,
-  hint?: string,
-): { group: HTMLDivElement; input: HTMLInputElement; valueEl: HTMLSpanElement } {
-  const group = document.createElement('div');
-  group.className = 'control-group';
-
-  const labelRow = document.createElement('div');
-  labelRow.className = 'control-label';
-
-  const labelText = document.createElement('span');
-  labelText.textContent = label;
-
-  const valueEl = document.createElement('span');
-  valueEl.className = 'value';
-  valueEl.textContent = String(defaultValue);
-
-  labelRow.appendChild(labelText);
-  labelRow.appendChild(valueEl);
-  group.appendChild(labelRow);
-
-  if (hint) {
-    const hintEl = document.createElement('div');
-    hintEl.className = 'control-hint';
-    hintEl.textContent = hint;
-    group.appendChild(hintEl);
-  }
-
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  input.value = String(defaultValue);
-
-  input.addEventListener('input', () => {
-    valueEl.textContent = input.value;
-  });
-
-  group.appendChild(input);
-
-  return { group, input, valueEl };
-}
