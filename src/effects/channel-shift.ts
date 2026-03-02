@@ -14,21 +14,11 @@ const channelShiftEffect: PixelEffect = {
   interactionType: 'directional',
 
   apply(source: ImageData, config: EffectConfig): ImageData {
-    const intensity = config['intensity'] ?? 20;
+    const intensity = (config['intensity'] ?? 100) / 100;
     const mode = config['mode'] ?? 0;
-    const dirX = config['directionX'] ?? 0;
-    const dirY = config['directionY'] ?? 0;
-
-    let dx = dirX;
-    let dy = dirY;
-    const mag = Math.sqrt(dx * dx + dy * dy);
-    if (mag > 0) {
-      dx = (dx / mag) * intensity;
-      dy = (dy / mag) * intensity;
-    } else {
-      dx = intensity;
-      dy = 0;
-    }
+    // X/Y come from drag-bound sliders (or manual adjustment)
+    const dx = (config['shiftX'] ?? 0) * intensity;
+    const dy = (config['shiftY'] ?? 0) * intensity;
 
     const { width, height, data } = source;
     const out = new ImageData(width, height);
@@ -86,9 +76,12 @@ const channelShiftEffect: PixelEffect = {
 export const channelShiftDef: EffectToolDef = {
   effect: channelShiftEffect,
   sliders: [
-    { key: 'intensity', label: 'Intensity', min: 1, max: 300, step: 1, defaultValue: 40, hint: 'How far channels drift apart' },
+    { key: 'intensity', label: 'Intensity', min: 0, max: 100, step: 1, defaultValue: 100, hint: 'Strength of channel separation' },
+    { key: 'shiftX', label: 'X', min: -300, max: 300, step: 1, defaultValue: 0, dragBind: 'x' },
+    { key: 'shiftY', label: 'Y', min: -300, max: 300, step: 1, defaultValue: 0, dragBind: 'y' },
   ],
   modes: [
     { key: 'mode', modes: ['Split', 'Cross', 'Tri-angle', 'Circular'], defaultIndex: 0 },
   ],
+  dragMapping: '2d',
 };

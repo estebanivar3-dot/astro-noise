@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CVLT TOOLS</title>
+  <title>ASTRO NOISE</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=block" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=block" rel="stylesheet" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -14,23 +14,51 @@
     <main class="app-main">
       <aside class="panel-left">
         <div class="sidebar-header">
-          <div class="brand">CVLT TOOLS</div>
-          <div class="brand-sub">Image Destruction Toolkit</div>
-          <span class="version">v0.3.0</span>
+          <h1 class="brand">ASTRO NOISE</h1>
+          <div class="header-rule"></div>
+          <div class="header-meta">
+            <span class="status-indicator">Image Destruction Toolkit</span>
+            <span class="version-badge">v0.3.0</span>
+          </div>
         </div>
 
         <nav class="nav" id="tool-nav">
-          <a class="nav-item active" data-tool="deepdream">DeepDream</a>
-          <a class="nav-item" data-tool="style-transfer">Style Transfer</a>
-          <a class="nav-item" data-tool="threshold">Threshold</a>
-          <a class="nav-item" data-tool="channel-shift">Channel Shift</a>
-          <a class="nav-item" data-tool="lcd">LCD</a>
-          <a class="nav-item" data-tool="burn">Burn</a>
-          <a class="nav-item" data-tool="pixlt">PIXLT</a>
-          <a class="nav-item" data-tool="noise">Noise</a>
-          <a class="nav-item" data-tool="fill">Fill</a>
-          <a class="nav-item" data-tool="gradient">Gradient</a>
-          <a class="nav-item" data-tool="mosh">Mosh</a>
+          <div class="nav-group">
+            <div class="nav-group-header"><span class="nav-group-label">Neural</span><span class="nav-group-line"></span></div>
+            <a class="nav-item active" data-tool="deepdream"><span class="item-num">01</span><span class="item-label">DeepDream</span></a>
+            <a class="nav-item" data-tool="style-transfer"><span class="item-num">02</span><span class="item-label">Style Transfer</span></a>
+            <a class="nav-item" data-tool="generate"><span class="item-num">03</span><span class="item-label">Generate</span></a>
+            <a class="nav-item" data-tool="redream"><span class="item-num">04</span><span class="item-label">Re-Dream</span></a>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-header"><span class="nav-group-label">Pixel</span><span class="nav-group-line"></span></div>
+            <a class="nav-item" data-tool="threshold"><span class="item-num">05</span><span class="item-label">Threshold</span></a>
+            <a class="nav-item" data-tool="channel-shift"><span class="item-num">06</span><span class="item-label">Channel Shift</span></a>
+            <a class="nav-item" data-tool="scanlines"><span class="item-num">07</span><span class="item-label">Scanlines</span></a>
+            <a class="nav-item" data-tool="burn"><span class="item-num">08</span><span class="item-label">Burn</span></a>
+            <a class="nav-item" data-tool="solarize"><span class="item-num">09</span><span class="item-label">Solarize</span></a>
+            <a class="nav-item" data-tool="pixelate"><span class="item-num">10</span><span class="item-label">Pixelate</span></a>
+            <a class="nav-item" data-tool="noise"><span class="item-num">11</span><span class="item-label">Noise</span></a>
+            <a class="nav-item" data-tool="colorize"><span class="item-num">12</span><span class="item-label">Colorize</span></a>
+            <a class="nav-item" data-tool="gradient"><span class="item-num">13</span><span class="item-label">Gradient</span></a>
+            <a class="nav-item" data-tool="squares"><span class="item-num">14</span><span class="item-label">Squares</span></a>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-header"><span class="nav-group-label">Glitch</span><span class="nav-group-line"></span></div>
+            <a class="nav-item" data-tool="chromatic-aberration"><span class="item-num">15</span><span class="item-label">Chromatic Aberration</span></a>
+            <a class="nav-item" data-tool="fill"><span class="item-num">16</span><span class="item-label">Fill</span></a>
+            <a class="nav-item" data-tool="datamosh"><span class="item-num">17</span><span class="item-label">Datamosh</span></a>
+            <a class="nav-item" data-tool="slit-scan"><span class="item-num">18</span><span class="item-label">Slit-Scan</span></a>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-header"><span class="nav-group-label">Algorithmic</span><span class="nav-group-line"></span></div>
+            <a class="nav-item" data-tool="fractal-echo"><span class="item-num">19</span><span class="item-label">Fractal Echo</span></a>
+            <a class="nav-item" data-tool="seam-carve"><span class="item-num">20</span><span class="item-label">Seam Carve</span></a>
+            <a class="nav-item" data-tool="feedback-loop"><span class="item-num">21</span><span class="item-label">Feedback Loop</span></a>
+            <a class="nav-item" data-tool="pixel-sort"><span class="item-num">22</span><span class="item-label">Pixel Sort</span></a>
+            <a class="nav-item" data-tool="dither"><span class="item-num">23</span><span class="item-label">Dither</span></a>
+            <a class="nav-item" data-tool="displacement"><span class="item-num">24</span><span class="item-label">Displacement</span></a>
+          </div>
         </nav>
 
         <div class="panel-content" id="left-panel-content">

@@ -21,6 +21,8 @@ export interface SliderDef {
   step: number;
   defaultValue: number;
   hint?: string;
+  /** For 2D effects: bind this slider to a drag axis so it updates live during drag */
+  dragBind?: 'x' | 'y';
 }
 
 export interface ModeDef {
@@ -34,4 +36,8 @@ export interface EffectToolDef {
   sliders: SliderDef[];
   modes?: ModeDef[];
   supportsInteractive?: boolean;
+  /** '1d' = dir.x → primary slider (default). '2d' = magnitude → slider + inject directionX/Y */
+  dragMapping?: '1d' | '2d';
+  /** When true, brush strokes stack additively using the intensity slider as brush opacity */
+  stackingBrush?: boolean;
 }

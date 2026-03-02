@@ -13,6 +13,7 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@huggingface/inference": "^4.13.14",
     "@tensorflow/tfjs": "^4.22.0"
   }
 }

@@ -1,5 +1,5 @@
 /**
- * LCD — RGB channel separation + vertical scanline grid.
+ * Scanlines — RGB channel separation + vertical scanline grid.
  */
 
 import type { PixelEffect, EffectConfig, EffectToolDef } from './types.ts';
@@ -8,27 +8,20 @@ function clamp(val: number, min: number, max: number): number {
   return val < min ? min : val > max ? max : val;
 }
 
-const lcdEffect: PixelEffect = {
-  id: 'lcd',
-  label: 'LCD',
+const scanlinesEffect: PixelEffect = {
+  id: 'scanlines',
+  label: 'Scanlines',
   interactionType: 'directional',
 
   apply(source: ImageData, config: EffectConfig): ImageData {
-    const intensity = config['intensity'] ?? 30;
+    const intensity = (config['intensity'] ?? 100) / 100;
     const mode = config['mode'] ?? 0;
-    const dirX = config['directionX'] ?? 0;
-    const dirY = config['directionY'] ?? 0;
-
-    let dx = dirX;
-    let dy = dirY;
-    const mag = Math.sqrt(dx * dx + dy * dy);
-    if (mag > 0) {
-      dx = (dx / mag) * intensity;
-      dy = (dy / mag) * intensity;
-    } else {
-      dx = intensity;
-      dy = 0;
-    }
+    // X/Y come from drag-bound sliders (or manual adjustment)
+    const shiftX = config['shiftX'] ?? 0;
+    const shiftY = config['shiftY'] ?? 0;
+    const dx = shiftX * intensity;
+    const dy = shiftY * intensity;
+    const dragMag = Math.sqrt(shiftX * shiftX + shiftY * shiftY) * intensity;
 
     const { width, height, data } = source;
     const out = new ImageData(width, height);
@@ -47,15 +40,15 @@ const lcdEffect: PixelEffect = {
             bOx = -dx; bOy = 0;
             break;
           case 2:
-            rOx = 0; rOy = dy || intensity;
+            rOx = 0; rOy = dy || dragMag;
             gOx = 0; gOy = 0;
-            bOx = 0; bOy = -(dy || intensity);
+            bOx = 0; bOy = -(dy || dragMag);
             break;
           case 3: {
             const cx = x - width / 2;
             const cy = y - height / 2;
             const cMag = Math.sqrt(cx * cx + cy * cy) || 1;
-            const scale = intensity / cMag * 0.3;
+            const scale = dragMag / cMag * 0.3;
             rOx = cx * scale; rOy = cy * scale;
             gOx = 0; gOy = 0;
             bOx = -cx * scale; bOy = -cy * scale;
@@ -78,7 +71,7 @@ const lcdEffect: PixelEffect = {
         dst[i]     = data[(rSy * width + rSx) * 4];
         dst[i + 1] = data[(gSy * width + gSx) * 4 + 1];
         dst[i + 2] = data[(bSy * width + bSx) * 4 + 2];
-        dst[i + 3] = 255;
+        dst[i + 3] = data[i + 3];
       }
     }
 
@@ -114,13 +107,16 @@ const lcdEffect: PixelEffect = {
   },
 };
 
-export const lcdDef: EffectToolDef = {
-  effect: lcdEffect,
+export const scanlinesDef: EffectToolDef = {
+  effect: scanlinesEffect,
   sliders: [
-    { key: 'intensity', label: 'Displacement', min: 1, max: 150, step: 1, defaultValue: 30, hint: 'How far RGB channels separate' },
+    { key: 'intensity', label: 'Intensity', min: 0, max: 100, step: 1, defaultValue: 100, hint: 'Strength of channel displacement' },
+    { key: 'shiftX', label: 'X', min: -300, max: 300, step: 1, defaultValue: 0, dragBind: 'x' },
+    { key: 'shiftY', label: 'Y', min: -300, max: 300, step: 1, defaultValue: 0, dragBind: 'y' },
     { key: 'grid', label: 'Scanline Grid', min: 0, max: 100, step: 1, defaultValue: 20, hint: 'Strength of the RGB sub-pixel grid' },
   ],
   modes: [
     { key: 'mode', modes: ['Directional', 'Horizontal', 'Vertical', 'Radial'], defaultIndex: 0 },
   ],
+  dragMapping: '2d',
 };

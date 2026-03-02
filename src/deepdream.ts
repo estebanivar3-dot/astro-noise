@@ -210,6 +210,10 @@ export async function deepDream(
   const origHeight = sourceImageData.height;
   const S = PROCESSING_SIZE; // 512 — must match model's input_shape
 
+  // Start a tensor scope so we can dispose all tensors on error.
+  // On success we extract the result before ending the scope.
+  tf.engine().startScope();
+
   try {
     // 1. Convert source ImageData → float32 tensor, resize to 512×512, map to [-1, 1].
     const rawTensor = tf.browser.fromPixels(sourceImageData);              // [H,W,3] uint8
@@ -286,9 +290,12 @@ export async function deepDream(
     });
     resultTensor.dispose();
 
-    // 5. Convert to ImageData.
+    // 5. Convert to ImageData (CPU-side — safe to keep after scope ends).
     const imageData = tensorToImageData(finalTensor);
     finalTensor.dispose();
+
+    // End scope — all tracked tensors have been disposed manually above.
+    tf.engine().endScope();
 
     const tensorsAfter = tf.memory().numTensors;
     console.log(
@@ -297,10 +304,13 @@ export async function deepDream(
 
     return imageData;
   } catch (err) {
-    // Clean up any leaked tensors from a failed run.
-    const leaked = tf.memory().numTensors - tensorsBefore;
+    // End scope — this disposes any tensors created since startScope().
+    tf.engine().endScope();
+
+    const tensorsAfter = tf.memory().numTensors;
+    const leaked = tensorsAfter - tensorsBefore;
     if (leaked > 0) {
-      console.warn(`[deepDream] cleaning up ${leaked} leaked tensors after error`);
+      console.warn(`[deepDream] cleaned up tensors after error (delta: ${leaked})`);
     }
     throw err;
   }

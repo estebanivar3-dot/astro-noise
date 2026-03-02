@@ -1,5 +1,5 @@
 /**
- * Mosh — datamoshing / compression corruption simulation.
+ * Squares — block displacement / compression corruption simulation.
  */
 
 import type { PixelEffect, EffectConfig, EffectToolDef } from './types.ts';
@@ -8,10 +8,10 @@ function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;
 }
 
-const moshEffect: PixelEffect = {
-  id: 'mosh',
-  label: 'Mosh',
-  interactionType: 'smear',
+const squaresEffect: PixelEffect = {
+  id: 'squares',
+  label: 'Squares',
+  interactionType: 'area-paint',
 
   apply(source: ImageData, config: EffectConfig): ImageData {
     const intensity = (config['intensity'] ?? 50) / 100;
@@ -55,7 +55,11 @@ const moshEffect: PixelEffect = {
       case 2: {
         const chunkCount = Math.round(10 + intensity * 40);
         for (let c = 0; c < chunkCount; c++) {
-          const chunkLen = Math.floor(4 + rand() * blockSize * 4) * 4;
+          const chunkLen = Math.min(
+            Math.floor(4 + rand() * blockSize * 4) * 4,
+            data.length - 4,
+          );
+          if (chunkLen <= 0) continue;
           const srcOff = Math.floor(rand() * (data.length - chunkLen));
           const dstOff = Math.floor(rand() * (data.length - chunkLen));
           for (let j = 0; j < chunkLen; j++) {
@@ -94,13 +98,14 @@ const moshEffect: PixelEffect = {
   },
 };
 
-export const moshDef: EffectToolDef = {
-  effect: moshEffect,
+export const squaresDef: EffectToolDef = {
+  effect: squaresEffect,
   sliders: [
-    { key: 'intensity', label: 'Intensity', min: 0, max: 200, step: 1, defaultValue: 80, hint: 'How corrupted the output looks' },
+    { key: 'intensity', label: 'Intensity', min: 1, max: 200, step: 1, defaultValue: 80, hint: 'How much each brush stroke corrupts' },
     { key: 'blockSize', label: 'Block Size', min: 4, max: 128, step: 2, defaultValue: 24, hint: 'Size of displaced blocks' },
   ],
   modes: [
     { key: 'mode', modes: ['Block Shift', 'Row Glitch', 'Byte Corrupt'], defaultIndex: 0 },
   ],
+  stackingBrush: true,
 };

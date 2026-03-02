@@ -28,8 +28,12 @@ export interface StyleTransferControlsManager {
   setProgress(fraction: number): void;
   /** Enable or disable the Stylize button externally. */
   setActionEnabled(enabled: boolean): void;
+  /** Set the Stylize button label (e.g. loading state, missing conditions). */
+  setButtonLabel(label: string): void;
   /** Access the style picker (for reading the style image). */
   getStylePicker(): StylePicker | null;
+  /** Show/hide Apply + Reset based on whether a result exists. */
+  setHasResult(has: boolean): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,11 +42,13 @@ export interface StyleTransferControlsManager {
 
 export function createStyleTransferTool(callbacks: {
   onStylize: () => void;
+  onApply: () => void;
   onReset: () => void;
 }): Tool & { controls: StyleTransferControlsManager } {
   // Internal state — set when createRightPanel / createLeftPanel build the UI.
   let strengthInput: HTMLInputElement;
   let stylizeBtn: HTMLButtonElement;
+  let applyBtn: HTMLButtonElement;
   let resetBtn: HTMLButtonElement;
   let progressGroup: HTMLDivElement;
   let progressFill: HTMLDivElement;
@@ -72,6 +78,8 @@ export function createStyleTransferTool(callbacks: {
       }
       if (statusText) {
         if (active) {
+          progressGroup?.querySelector('.progress-bar')?.removeAttribute('style');
+          statusText.style.marginTop = '';
           statusText.textContent = 'Stylizing\u2026';
           statusText.classList.add('pulse');
         } else {
@@ -90,8 +98,14 @@ export function createStyleTransferTool(callbacks: {
     },
 
     setStatus(message: string): void {
-      if (progressGroup) progressGroup.style.display = 'block';
-      if (statusText) statusText.textContent = message;
+      if (progressGroup) {
+        progressGroup.style.display = 'block';
+        progressGroup.querySelector('.progress-bar')?.setAttribute('style', 'display:none');
+      }
+      if (statusText) {
+        statusText.style.marginTop = '0';
+        statusText.textContent = message;
+      }
     },
 
     setProgress(fraction: number): void {
@@ -108,8 +122,17 @@ export function createStyleTransferTool(callbacks: {
       if (stylizeBtn) stylizeBtn.disabled = !enabled;
     },
 
+    setButtonLabel(label: string): void {
+      if (stylizeBtn) stylizeBtn.textContent = label;
+    },
+
     getStylePicker(): StylePicker | null {
       return stylePicker;
+    },
+
+    setHasResult(has: boolean): void {
+      if (applyBtn) applyBtn.disabled = !has;
+      if (resetBtn) resetBtn.disabled = !has;
     },
   };
 
@@ -174,25 +197,45 @@ export function createStyleTransferTool(callbacks: {
       progressGroup.appendChild(statusText);
       canvasContainer.appendChild(progressGroup);
 
-      // ---- Action buttons (Stylize + Reset) ----
+      // ---- Action buttons: Stylize (full-width), Apply + Reset (row below) ----
+      actionBar.style.flexDirection = 'column';
+
       stylizeBtn = document.createElement('button');
       stylizeBtn.className = 'btn btn-primary btn-dream';
       stylizeBtn.textContent = 'Stylize';
       stylizeBtn.disabled = true;
+      stylizeBtn.addEventListener('click', () => callbacks.onStylize());
+
+      applyBtn = document.createElement('button');
+      applyBtn.className = 'btn';
+      applyBtn.style.flex = '1';
+      applyBtn.style.background = '#4a7a5a';
+      applyBtn.style.color = '#e8e8e8';
+      applyBtn.style.borderColor = '#4a7a5a';
+      applyBtn.textContent = 'Apply';
+      applyBtn.disabled = true;
+      applyBtn.addEventListener('mouseover', () => { if (!applyBtn.disabled) applyBtn.style.background = '#5a9a6a'; });
+      applyBtn.addEventListener('mouseout', () => { applyBtn.style.background = '#4a7a5a'; });
+      applyBtn.addEventListener('click', () => callbacks.onApply());
 
       resetBtn = document.createElement('button');
-      resetBtn.className = 'btn btn-secondary btn-dream';
+      resetBtn.className = 'btn btn-secondary';
+      resetBtn.style.flex = '1';
       resetBtn.textContent = 'Reset';
       resetBtn.disabled = true;
-
-      stylizeBtn.addEventListener('click', () => callbacks.onStylize());
       resetBtn.addEventListener('click', () => callbacks.onReset());
 
       actionBar.appendChild(stylizeBtn);
-      actionBar.appendChild(resetBtn);
+
+      const subRow = document.createElement('div');
+      subRow.style.display = 'flex';
+      subRow.style.gap = '6px';
+      subRow.appendChild(applyBtn);
+      subRow.appendChild(resetBtn);
+      actionBar.appendChild(subRow);
 
       // ---- Track interactive elements for disable-during-stylize ----
-      interactiveElements = [strengthInput, stylizeBtn, resetBtn];
+      interactiveElements = [strengthInput, stylizeBtn, applyBtn, resetBtn];
 
       // ---- ToolControls ----
       return {

@@ -1,5 +1,6 @@
 /**
  * Threshold effect — converts to black & white based on luminance cutoff.
+ * In interactive mode, drag horizontally to adjust the threshold value.
  */
 
 import type { PixelEffect, EffectConfig, EffectToolDef } from './types.ts';
@@ -7,7 +8,7 @@ import type { PixelEffect, EffectConfig, EffectToolDef } from './types.ts';
 const thresholdEffect: PixelEffect = {
   id: 'threshold',
   label: 'Threshold',
-  interactionType: 'none',
+  interactionType: 'directional',
 
   apply(source: ImageData, config: EffectConfig): ImageData {
     const threshold = config['threshold'] ?? 128;
@@ -33,5 +34,4 @@ export const thresholdDef: EffectToolDef = {
   sliders: [
     { key: 'threshold', label: 'Threshold', min: 0, max: 255, step: 1, defaultValue: 128, hint: 'Luminance cutoff for black vs white' },
   ],
-  supportsInteractive: false,
 };

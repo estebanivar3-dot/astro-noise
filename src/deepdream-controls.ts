@@ -52,6 +52,10 @@ export interface ControlsManager {
   setStatus(message: string): void;
   /** Enable or disable the Dream button externally. */
   setDreamEnabled(enabled: boolean): void;
+  /** Show/hide Apply + Reset based on whether a result exists. */
+  setHasResult(has: boolean): void;
+  /** Show model loading state in the layer dropdown. */
+  setModelLoading(loading: boolean, message?: string): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,15 +64,18 @@ export interface ControlsManager {
 
 export function createDeepDreamTool(callbacks: {
   onDream: () => void;
+  onApply: () => void;
   onReset: () => void;
 }): Tool & { controls: ControlsManager } {
   // Internal state shared between createRightPanel calls and the
   // ControlsManager facade. These are set when createRightPanel builds the UI.
   let layerSelect: HTMLSelectElement;
+  let selectWrapper: HTMLDivElement;
   let intensityInput: HTMLInputElement;
   let iterationsInput: HTMLInputElement;
   let octavesInput: HTMLInputElement;
   let dreamBtn: HTMLButtonElement;
+  let applyBtn: HTMLButtonElement;
   let resetBtn: HTMLButtonElement;
   let progressGroup: HTMLDivElement;
   let progressFill: HTMLDivElement;
@@ -95,6 +102,8 @@ export function createDeepDreamTool(callbacks: {
       dreamBtn.textContent = active ? 'Dreaming\u2026' : 'Dream';
       progressGroup.style.display = active ? 'block' : 'none';
       if (active) {
+        progressGroup.querySelector('.progress-bar')?.removeAttribute('style');
+        statusText.style.marginTop = '';
         progressFill.style.width = '0%';
         statusText.textContent = 'Initializing\u2026';
         statusText.classList.add('pulse');
@@ -121,12 +130,40 @@ export function createDeepDreamTool(callbacks: {
 
     setStatus(message: string): void {
       progressGroup.style.display = 'block';
+      progressGroup.querySelector('.progress-bar')?.setAttribute('style', 'display:none');
+      statusText.style.marginTop = '0';
       statusText.textContent = message;
       statusText.classList.remove('pulse');
     },
 
     setDreamEnabled(enabled: boolean): void {
       if (dreamBtn) dreamBtn.disabled = !enabled;
+    },
+
+    setHasResult(has: boolean): void {
+      if (applyBtn) applyBtn.disabled = !has;
+      if (resetBtn) resetBtn.disabled = !has;
+    },
+
+    setModelLoading(loading: boolean, message?: string): void {
+      if (!selectWrapper) return;
+      if (loading) {
+        layerSelect.disabled = true;
+        layerSelect.style.display = 'none';
+        // Add or update the loading label
+        let loadingLabel = selectWrapper.querySelector('.select-loading') as HTMLDivElement | null;
+        if (!loadingLabel) {
+          loadingLabel = document.createElement('div');
+          loadingLabel.className = 'select-loading pulse';
+          selectWrapper.insertBefore(loadingLabel, layerSelect);
+        }
+        loadingLabel.textContent = message || 'Loading model\u2026';
+      } else {
+        layerSelect.disabled = false;
+        layerSelect.style.display = '';
+        const loadingLabel = selectWrapper.querySelector('.select-loading');
+        if (loadingLabel) loadingLabel.remove();
+      }
     },
   };
 
@@ -168,17 +205,12 @@ export function createDeepDreamTool(callbacks: {
         layerSelect.appendChild(option);
       }
 
-      const selectWrapper = document.createElement('div');
+      selectWrapper = document.createElement('div') as HTMLDivElement;
       selectWrapper.className = 'custom-select';
       selectWrapper.appendChild(layerSelect);
 
       layerGroup.appendChild(selectWrapper);
       controlsContainer.appendChild(layerGroup);
-
-      // ---- Divider ----
-      const divider = document.createElement('div');
-      divider.className = 'control-divider';
-      controlsContainer.appendChild(divider);
 
       // ---- Intensity slider ----
       const { group: intensityGroup, input: iInput } = createSlider(
@@ -224,22 +256,42 @@ export function createDeepDreamTool(callbacks: {
       progressGroup.appendChild(statusText);
       canvasContainer.appendChild(progressGroup);
 
-      // ---- Action buttons (Dream + Reset) ----
+      // ---- Action buttons: Dream (full-width), Apply + Reset (row below) ----
+      actionBar.style.flexDirection = 'column';
+
       dreamBtn = document.createElement('button');
       dreamBtn.className = 'btn btn-primary btn-dream';
       dreamBtn.textContent = 'Dream';
       dreamBtn.disabled = true;
+      dreamBtn.addEventListener('click', () => callbacks.onDream());
+
+      applyBtn = document.createElement('button');
+      applyBtn.className = 'btn';
+      applyBtn.style.flex = '1';
+      applyBtn.style.background = '#4a7a5a';
+      applyBtn.style.color = '#e8e8e8';
+      applyBtn.style.borderColor = '#4a7a5a';
+      applyBtn.textContent = 'Apply';
+      applyBtn.disabled = true;
+      applyBtn.addEventListener('mouseover', () => { if (!applyBtn.disabled) applyBtn.style.background = '#5a9a6a'; });
+      applyBtn.addEventListener('mouseout', () => { applyBtn.style.background = '#4a7a5a'; });
+      applyBtn.addEventListener('click', () => callbacks.onApply());
 
       resetBtn = document.createElement('button');
-      resetBtn.className = 'btn btn-secondary btn-dream';
+      resetBtn.className = 'btn btn-secondary';
+      resetBtn.style.flex = '1';
       resetBtn.textContent = 'Reset';
       resetBtn.disabled = true;
-
-      dreamBtn.addEventListener('click', () => callbacks.onDream());
       resetBtn.addEventListener('click', () => callbacks.onReset());
 
       actionBar.appendChild(dreamBtn);
-      actionBar.appendChild(resetBtn);
+
+      const subRow = document.createElement('div');
+      subRow.style.display = 'flex';
+      subRow.style.gap = '6px';
+      subRow.appendChild(applyBtn);
+      subRow.appendChild(resetBtn);
+      actionBar.appendChild(subRow);
 
       // ---- Track interactive elements for disable-during-dream ----
       interactiveElements = [
@@ -248,6 +300,7 @@ export function createDeepDreamTool(callbacks: {
         iterationsInput,
         octavesInput,
         dreamBtn,
+        applyBtn,
         resetBtn,
       ];
 

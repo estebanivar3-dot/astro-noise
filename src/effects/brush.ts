@@ -5,17 +5,27 @@
 
 import type { InteractionType } from './types.ts';
 
+export type DirectionMode = 'relative' | 'absolute';
+
 export interface BrushController {
   attach(canvas: HTMLCanvasElement): void;
   detach(): void;
   setInteractionType(type: InteractionType): void;
   setBrushRadius(radius: number): void;
   setBrushSoftness(softness: number): void;
+  /** Set brush opacity for stacking mode (0-1). Each stroke adds this much. */
+  setBrushIntensity(intensity: number): void;
+  /** When true, strokes accumulate additively instead of painting to 1.0 */
+  setAdditive(additive: boolean): void;
+  /** 'relative' = offset from drag start (default). 'absolute' = offset from canvas center. */
+  setDirectionMode(mode: DirectionMode): void;
   getMask(): Float32Array | null;
   getDirection(): { x: number; y: number };
+  getCanvas(): HTMLCanvasElement | null;
   clearMask(): void;
   setMask(mask: Float32Array): void;
   onChange(callback: () => void): void;
+  onDragStart(callback: () => void): void;
   onStrokeEnd(callback: () => void): void;
 }
 
@@ -24,6 +34,9 @@ export function createBrushController(): BrushController {
   let interactionType: InteractionType = 'none';
   let brushRadius = 20;
   let brushSoftness = 0.5;
+  let brushIntensity = 1.0;
+  let additive = false;
+  let directionMode: DirectionMode = 'relative';
   let mask: Float32Array | null = null;
   let directionX = 0;
   let directionY = 0;
@@ -31,6 +44,7 @@ export function createBrushController(): BrushController {
   let dragStartX = 0;
   let dragStartY = 0;
   let changeCallback: (() => void) | null = null;
+  let dragStartCallback: (() => void) | null = null;
   let strokeEndCallback: (() => void) | null = null;
 
   // Cursor overlay
@@ -71,7 +85,13 @@ export function createBrushController(): BrushController {
         const edgeFactor = brushSoftness > 0
           ? 1 - Math.pow(dist / r, 1 / brushSoftness)
           : (dist < r ? 1 : 0);
-        mask[idx] = Math.max(mask[idx], Math.max(0, edgeFactor));
+        const val = Math.max(0, edgeFactor);
+        if (additive) {
+          // Stacking: each stroke adds brushIntensity * shape to the mask
+          mask[idx] = Math.min(1, mask[idx] + brushIntensity * val);
+        } else {
+          mask[idx] = Math.max(mask[idx], val);
+        }
       }
     }
   }
@@ -129,6 +149,16 @@ export function createBrushController(): BrushController {
     attach(c: HTMLCanvasElement): void {
       canvas = c;
 
+      // Apply cursor style for the already-set interactionType
+      // (setInteractionType is called before attach, so the cursor wasn't applied yet)
+      if (interactionType === 'none') {
+        canvas.style.cursor = 'default';
+      } else if (interactionType === 'area-paint' || interactionType === 'smear') {
+        canvas.style.cursor = 'none';
+      } else {
+        canvas.style.cursor = 'crosshair';
+      }
+
       onMouseDown = (e: MouseEvent) => {
         if (interactionType === 'none') return;
         isDrawing = true;
@@ -136,8 +166,17 @@ export function createBrushController(): BrushController {
         dragStartX = x;
         dragStartY = y;
 
+        // Ensure mask exists before dragStart so history can snapshot it
         if (interactionType === 'area-paint' || interactionType === 'smear') {
           ensureMask();
+        }
+        dragStartCallback?.();
+
+        if (interactionType === 'directional' && directionMode === 'absolute' && canvas) {
+          directionX = x - canvas.width / 2;
+          directionY = y - canvas.height / 2;
+          changeCallback?.();
+        } else if (interactionType === 'area-paint' || interactionType === 'smear') {
           paintCircle(x, y);
           changeCallback?.();
         }
@@ -148,8 +187,15 @@ export function createBrushController(): BrushController {
         const { x, y } = canvasCoords(e);
 
         if (interactionType === 'directional') {
-          directionX = x - dragStartX;
-          directionY = y - dragStartY;
+          if (directionMode === 'absolute' && canvas) {
+            // Absolute: direction from canvas center
+            directionX = x - canvas.width / 2;
+            directionY = y - canvas.height / 2;
+          } else {
+            // Relative: direction from drag start
+            directionX = x - dragStartX;
+            directionY = y - dragStartY;
+          }
           changeCallback?.();
         } else if (interactionType === 'area-paint' || interactionType === 'smear') {
           paintCircle(x, y);
@@ -199,6 +245,9 @@ export function createBrushController(): BrushController {
         window.removeEventListener('mouseup', onMouseUp);
       }
       removeCursorOverlay();
+      if (typeof window !== 'undefined' && window.__cvlt) {
+        window.__cvlt.brushInteraction = 'none';
+      }
       canvas = null;
       onMouseDown = null;
       onMouseMove = null;
@@ -209,8 +258,18 @@ export function createBrushController(): BrushController {
 
     setInteractionType(type: InteractionType): void {
       interactionType = type;
+      // Broadcast so canvas knows whether clicks should open the file picker
+      if (typeof window !== 'undefined' && window.__cvlt) {
+        window.__cvlt.brushInteraction = type;
+      }
       if (canvas) {
-        canvas.style.cursor = type === 'none' ? 'default' : 'crosshair';
+        if (type === 'none') {
+          canvas.style.cursor = 'default';
+        } else if (type === 'area-paint' || type === 'smear') {
+          canvas.style.cursor = 'none'; // brush overlay replaces native cursor
+        } else {
+          canvas.style.cursor = 'crosshair';
+        }
       }
       if (!showBrushCursor()) {
         removeCursorOverlay();
@@ -219,8 +278,12 @@ export function createBrushController(): BrushController {
 
     setBrushRadius(r: number): void { brushRadius = r; },
     setBrushSoftness(s: number): void { brushSoftness = s; },
+    setBrushIntensity(i: number): void { brushIntensity = i; },
+    setAdditive(a: boolean): void { additive = a; },
+    setDirectionMode(mode: DirectionMode): void { directionMode = mode; },
     getMask(): Float32Array | null { return mask; },
     getDirection(): { x: number; y: number } { return { x: directionX, y: directionY }; },
+    getCanvas(): HTMLCanvasElement | null { return canvas; },
 
     clearMask(): void {
       if (mask) mask.fill(0);
@@ -233,6 +296,7 @@ export function createBrushController(): BrushController {
     },
 
     onChange(callback: () => void): void { changeCallback = callback; },
+    onDragStart(callback: () => void): void { dragStartCallback = callback; },
     onStrokeEnd(callback: () => void): void { strokeEndCallback = callback; },
   };
 }

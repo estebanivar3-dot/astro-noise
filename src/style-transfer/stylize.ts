@@ -23,6 +23,26 @@ export const DEFAULT_STYLE_CONFIG: StyleConfig = {
 };
 
 // ---------------------------------------------------------------------------
+// Diagnostics
+// ---------------------------------------------------------------------------
+
+/** Debug-only tensor diagnostics. Uses blocking dataSync() — never call in production. */
+const DEBUG_TENSORS = false;
+
+function tensorStats(t: tf.Tensor, label: string): void {
+  if (!DEBUG_TENSORS) return;
+  const data = t.dataSync();
+  let min = Infinity, max = -Infinity, sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] < min) min = data[i];
+    if (data[i] > max) max = data[i];
+    sum += data[i];
+  }
+  const mean = sum / data.length;
+  console.log(`[stylize] ${label}: shape=${t.shape} min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)}`);
+}
+
+// ---------------------------------------------------------------------------
 // Core algorithm
 // ---------------------------------------------------------------------------
 
@@ -78,13 +98,42 @@ export async function stylizeImage(
   config: StyleConfig = DEFAULT_STYLE_CONFIG,
   onProgress?: (fraction: number) => void,
 ): Promise<ImageData> {
-  const tensorsBefore = tf.memory().numTensors;
-  console.log(`[stylize] start — tensors: ${tensorsBefore}`);
+  // Try at preferred resolution, fall back to smaller if WebGL texture limit is hit.
+  const DIMS_TO_TRY = [768, 512, 384];
 
-  // Cap resolution to avoid WebGL OOM / multi-second freezes.
-  const MAX_DIM = 1024;
-  const scaledContent = downscaleImageData(contentImageData, MAX_DIM);
-  const scaledStyle = downscaleImageData(styleImageData, MAX_DIM);
+  for (const maxDim of DIMS_TO_TRY) {
+    try {
+      return await stylizeAtResolution(
+        contentImageData, styleImageData, model, config, maxDim, onProgress,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('texture size') && maxDim !== DIMS_TO_TRY[DIMS_TO_TRY.length - 1]) {
+        console.warn(`[stylize] WebGL texture limit hit at ${maxDim}px — retrying smaller`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error('Style transfer failed at all resolutions');
+}
+
+async function stylizeAtResolution(
+  contentImageData: ImageData,
+  styleImageData: ImageData,
+  model: StyleTransferModel,
+  config: StyleConfig,
+  maxDim: number,
+  onProgress?: (fraction: number) => void,
+): Promise<ImageData> {
+  const tensorsBefore = tf.memory().numTensors;
+  console.log(`[stylize] start at ${maxDim}px — tensors: ${tensorsBefore}`);
+
+  const scaledContent = downscaleImageData(contentImageData, maxDim);
+  const scaledStyle = downscaleImageData(styleImageData, maxDim);
+
+  tf.engine().startScope();
 
   try {
     onProgress?.(0.05);
@@ -92,6 +141,7 @@ export async function stylizeImage(
 
     // 1. Compute style bottleneck from the style image.
     const styleBottleneck = model.predictStyle(scaledStyle);
+    tensorStats(styleBottleneck, 'styleBottleneck');
     onProgress?.(0.25);
     await yieldToUI();
 
@@ -124,6 +174,7 @@ export async function stylizeImage(
 
     // 3. Run the transformer.
     const resultTensor = model.stylize(scaledContent, finalBottleneck);
+    tensorStats(resultTensor, 'transformerOutput');
     finalBottleneck.dispose();
     onProgress?.(0.85);
     await yieldToUI();
@@ -137,18 +188,22 @@ export async function stylizeImage(
     const imageData = tensorToImageData(scaled);
     scaled.dispose();
 
+    tf.engine().endScope();
     onProgress?.(1.0);
 
     const tensorsAfter = tf.memory().numTensors;
     console.log(
-      `[stylize] done — tensors: ${tensorsAfter} (delta: ${tensorsAfter - tensorsBefore})`,
+      `[stylize] done at ${maxDim}px — tensors: ${tensorsAfter} (delta: ${tensorsAfter - tensorsBefore})`,
     );
 
     return imageData;
   } catch (err) {
-    const leaked = tf.memory().numTensors - tensorsBefore;
+    tf.engine().endScope();
+
+    const tensorsAfter = tf.memory().numTensors;
+    const leaked = tensorsAfter - tensorsBefore;
     if (leaked > 0) {
-      console.warn(`[stylize] cleaning up ${leaked} leaked tensors after error`);
+      console.warn(`[stylize] cleaned up tensors after error (delta: ${leaked})`);
     }
     throw err;
   }

@@ -120,4 +120,5 @@ export const gradientDef: EffectToolDef = {
     { key: 'colorSeed', label: 'Color Seed', min: 1, max: 999, step: 1, defaultValue: 42, hint: 'Change to get different color palettes' },
     { key: 'stops', label: 'Color Stops', min: 2, max: 8, step: 1, defaultValue: 4, hint: 'Number of colors in the gradient' },
   ],
+  dragMapping: '2d',
 };

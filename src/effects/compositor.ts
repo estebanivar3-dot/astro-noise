@@ -15,6 +15,7 @@ export interface Compositor {
   apply(): void;
   pushHistory(): void;
   undo(): boolean;
+  hasHistory(): boolean;
   reset(): void;
   destroy(): void;
 }
@@ -132,6 +133,10 @@ export function createCompositor(): Compositor {
         return true;
       }
       return false;
+    },
+
+    hasHistory(): boolean {
+      return historyStack.length > 0;
     },
 
     reset(): void {

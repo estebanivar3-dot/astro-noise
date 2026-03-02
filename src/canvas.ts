@@ -15,8 +15,11 @@ export function createCanvasManager() {
 
   // ---- Drop zone interactions ----
 
+  // Click-to-browse only works before an image is loaded
   dropZone.addEventListener('click', () => {
-    fileInput.click();
+    if (!sourceImage) {
+      fileInput.click();
+    }
   });
 
   dropZone.addEventListener('dragover', (e: DragEvent) => {
@@ -40,6 +43,19 @@ export function createCanvasManager() {
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     if (file) {
+      loadImageFile(file);
+    }
+  });
+
+  // Dropping a new image directly onto the canvas is still allowed
+  canvas.addEventListener('dragover', (e: DragEvent) => {
+    e.preventDefault();
+  });
+
+  canvas.addEventListener('drop', (e: DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files[0];
+    if (file && file.type.startsWith('image/')) {
       loadImageFile(file);
     }
   });
@@ -108,5 +124,23 @@ export function createCanvasManager() {
     }
   }
 
-  return { getSourceImage, displayImageData, getCanvas, setSourceImage, getOriginalSource, resetToOriginal };
+  function loadGeneratedImage(imageData: ImageData): void {
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    ctx.putImageData(imageData, 0, 0);
+    sourceImage = imageData;
+    originalSource = imageData;
+
+    if (canvasInfo) {
+      canvasInfo.textContent = `${imageData.width} x ${imageData.height}`;
+    }
+
+    dropZone.hidden = true;
+    canvas.hidden = false;
+    exportBtn.disabled = false;
+
+    window.dispatchEvent(new CustomEvent('cvlt:image-loaded'));
+  }
+
+  return { getSourceImage, displayImageData, getCanvas, setSourceImage, getOriginalSource, resetToOriginal, loadGeneratedImage };
 }

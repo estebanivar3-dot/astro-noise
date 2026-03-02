@@ -15,13 +15,28 @@ import { createEffectTool } from './effects/effect-tool.ts';
 import type { EffectToolCallbacks } from './effects/effect-tool.ts';
 import { thresholdDef } from './effects/threshold.ts';
 import { channelShiftDef } from './effects/channel-shift.ts';
-import { lcdDef } from './effects/lcd.ts';
+import { scanlinesDef } from './effects/scanlines.ts';
 import { burnDef } from './effects/burn.ts';
-import { pixltDef } from './effects/pixlt.ts';
+import { pixelateDef } from './effects/pixelate.ts';
 import { noiseDef } from './effects/noise.ts';
-import { fillDef } from './effects/fill.ts';
+import { colorizeDef } from './effects/colorize.ts';
 import { gradientDef } from './effects/gradient.ts';
-import { moshDef } from './effects/mosh.ts';
+import { squaresDef } from './effects/squares.ts';
+import { solarizeDef } from './effects/solarize.ts';
+import { chromaticDef } from './effects/chromatic-aberration.ts';
+import { fillDef } from './effects/fill.ts';
+import { datamoshDef } from './effects/datamosh.ts';
+import { slitScanDef } from './effects/slit-scan.ts';
+import { fractalEchoDef } from './effects/fractal-echo.ts';
+import { seamCarveDef } from './effects/seam-carve.ts';
+import { feedbackDef } from './effects/feedback-loop.ts';
+import { createGenerateTool } from './generate/controls.ts';
+import { generateImage } from './generate/api.ts';
+import { pixelSortDef } from './effects/pixel-sort.ts';
+import { ditherDef } from './effects/dither.ts';
+import { displacementDef } from './effects/displacement.ts';
+import { createRedreamTool } from './generate/redream-controls.ts';
+import { redream } from './generate/redream-engine.ts';
 
 declare global {
   interface Window {
@@ -63,6 +78,8 @@ let model: DreamModel | null = null;
 // DeepDream tool
 // ---------------------------------------------------------------------------
 
+let lastDreamResult: ImageData | null = null;
+
 const dreamTool = createDeepDreamTool({
   onDream: async () => {
     const sourceImage = canvasManager.getSourceImage();
@@ -79,22 +96,33 @@ const dreamTool = createDeepDreamTool({
         dreamTool.controls.setProgress(step, totalSteps);
       });
 
+      dreamTool.controls.setDreaming(false);
+      lastDreamResult = result;
       canvasManager.displayImageData(result);
-      dreamTool.controls.setStatus('Dream complete');
+      dreamTool.controls.setHasResult(true);
+      dreamTool.controls.setStatus('Dream complete — Apply to keep');
     } catch (err) {
       console.error('DeepDream failed:', err);
+      dreamTool.controls.setDreaming(false);
       const message = err instanceof Error ? err.message : 'Unknown error';
       dreamTool.controls.setStatus(`Error: ${message}`);
-    } finally {
-      dreamTool.controls.setDreaming(false);
+    }
+  },
+
+  onApply: () => {
+    if (lastDreamResult) {
+      canvasManager.setSourceImage(lastDreamResult);
+      lastDreamResult = null;
+      dreamTool.controls.setHasResult(false);
+      dreamTool.controls.setStatus('Applied — this is your new source');
     }
   },
 
   onReset: () => {
-    const sourceImage = canvasManager.getSourceImage();
-    if (sourceImage) {
-      canvasManager.displayImageData(sourceImage);
-    }
+    lastDreamResult = null;
+    canvasManager.resetToOriginal();
+    dreamTool.controls.setHasResult(false);
+    dreamTool.controls.setStatus('');
   },
 });
 
@@ -109,41 +137,100 @@ let styleModel: StyleTransferModel | null = null;
 let styleImageReady = false;
 let styleModelLoading = false;
 
+let lastStyleResult: ImageData | null = null;
+
 const styleTool = createStyleTransferTool({
   onStylize: async () => {
     const sourceImage = canvasManager.getSourceImage();
     const picker = styleTool.controls.getStylePicker();
-    const styleImage = picker?.getStyleImage() ?? null;
-    if (!sourceImage || !styleImage || !styleModel) return;
+    const styleImg = picker?.getStyleImage() ?? null;
+
+    if (!sourceImage) {
+      styleTool.controls.setStatus('Load a content image first');
+      return;
+    }
+    if (!styleImg) {
+      styleTool.controls.setStatus('Select a style image first');
+      return;
+    }
+    if (!styleModel) {
+      styleTool.controls.setStatus('Style model still loading\u2026');
+      return;
+    }
 
     const config = styleTool.controls.getConfig();
     styleTool.controls.setStylizing(true);
     styleTool.controls.setProgress(0);
 
     try {
-      const result = await stylizeImage(sourceImage, styleImage, styleModel, config, (fraction) => {
+      const result = await stylizeImage(sourceImage, styleImg, styleModel, config, (fraction) => {
         styleTool.controls.setProgress(fraction);
       });
+
+      styleTool.controls.setStylizing(false);
+      lastStyleResult = result;
       canvasManager.displayImageData(result);
-      styleTool.controls.setStatus('Stylization complete');
+      styleTool.controls.setHasResult(true);
+      styleTool.controls.setStatus('Stylization complete — Apply to keep');
     } catch (err) {
       console.error('Style transfer failed:', err);
+      styleTool.controls.setStylizing(false);
       const message = err instanceof Error ? err.message : 'Unknown error';
       styleTool.controls.setStatus(`Error: ${message}`);
-    } finally {
-      styleTool.controls.setStylizing(false);
+    }
+  },
+
+  onApply: () => {
+    if (lastStyleResult) {
+      canvasManager.setSourceImage(lastStyleResult);
+      lastStyleResult = null;
+      styleTool.controls.setHasResult(false);
+      styleTool.controls.setStatus('Applied — this is your new source');
     }
   },
 
   onReset: () => {
-    const sourceImage = canvasManager.getSourceImage();
-    if (sourceImage) {
-      canvasManager.displayImageData(sourceImage);
-    }
+    lastStyleResult = null;
+    canvasManager.resetToOriginal();
+    styleTool.controls.setHasResult(false);
+    styleTool.controls.setStatus('');
   },
 });
 
 router.register(styleTool);
+
+// ---------------------------------------------------------------------------
+// Generate tool (HF Inference API — no model loading)
+// ---------------------------------------------------------------------------
+
+const generateTool = createGenerateTool({
+  onGenerate: async () => {
+    const config = generateTool.controls.getConfig();
+    if (!config.prompt.trim()) {
+      generateTool.controls.setStatus('Enter a prompt');
+      return;
+    }
+    if (!config.token) {
+      generateTool.controls.setStatus('Enter your HF API token first');
+      return;
+    }
+    generateTool.controls.setGenerating(true);
+    try {
+      const imageData = await generateImage(config, (status) => {
+        generateTool.controls.setProgress(status);
+      });
+      canvasManager.loadGeneratedImage(imageData);
+      generateTool.controls.setStatus('Done \u2014 switch to any effect to destroy it');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Generation failed';
+      generateTool.controls.setStatus(`Error: ${msg}`);
+    } finally {
+      generateTool.controls.setGenerating(false);
+    }
+  },
+});
+
+router.register(generateTool);
 
 // ---------------------------------------------------------------------------
 // Pixel effect tools (no model loading needed)
@@ -156,11 +243,68 @@ const effectCallbacks: EffectToolCallbacks = {
   onReset: () => canvasManager.resetToOriginal(),
 };
 
-const effectDefs = [thresholdDef, channelShiftDef, lcdDef, burnDef, pixltDef, noiseDef, fillDef, gradientDef, moshDef];
+const effectDefs = [
+  thresholdDef, channelShiftDef, scanlinesDef, burnDef, solarizeDef,
+  pixelateDef, noiseDef, colorizeDef, gradientDef, squaresDef,
+  chromaticDef, fillDef, datamoshDef,
+  slitScanDef, fractalEchoDef, seamCarveDef, feedbackDef,
+  pixelSortDef, ditherDef, displacementDef,
+];
 
 for (const def of effectDefs) {
   router.register(createEffectTool(def, effectCallbacks));
 }
+
+// ---------------------------------------------------------------------------
+// Re-Dream tool (local effect randomizer)
+// ---------------------------------------------------------------------------
+
+let lastRedreamResult: ImageData | null = null;
+
+const redreamTool = createRedreamTool({
+  onRedream: () => {
+    const source = canvasManager.getSourceImage();
+    if (!source) {
+      redreamTool.controls.setStatus('Load an image first');
+      return;
+    }
+
+    const config = redreamTool.controls.getConfig();
+    redreamTool.controls.setRedreaming(true);
+    try {
+      const result = redream(source, effectDefs, config, (status) => {
+        redreamTool.controls.setProgress(status);
+      });
+      lastRedreamResult = result;
+      canvasManager.displayImageData(result);
+      redreamTool.controls.setHasResult(true);
+      redreamTool.controls.setStatus('Done — Apply to keep, or Re-Dream again');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Re-dream failed';
+      redreamTool.controls.setStatus(`Error: ${msg}`);
+    } finally {
+      redreamTool.controls.setRedreaming(false);
+    }
+  },
+
+  onApply: () => {
+    if (lastRedreamResult) {
+      canvasManager.setSourceImage(lastRedreamResult);
+      lastRedreamResult = null;
+      redreamTool.controls.setHasResult(false);
+      redreamTool.controls.setStatus('Applied — this is your new source');
+    }
+  },
+
+  onReset: () => {
+    lastRedreamResult = null;
+    canvasManager.resetToOriginal();
+    redreamTool.controls.setHasResult(false);
+    redreamTool.controls.setStatus('');
+  },
+});
+
+router.register(redreamTool);
 
 // ---------------------------------------------------------------------------
 // Activate default tool and expose debug API
@@ -168,7 +312,70 @@ for (const def of effectDefs) {
 
 router.activate('deepdream');
 
-window.__cvlt = { canvasManager, router };
+window.__cvlt = { canvasManager, router, srcActive: false };
+
+// ---------------------------------------------------------------------------
+// Global SRC (Show Original) — hold to preview source image
+// ---------------------------------------------------------------------------
+
+{
+  const panelLeft = document.querySelector('.panel-left') as HTMLElement;
+  const srcWrapper = document.createElement('div');
+  srcWrapper.className = 'src-btn-wrapper';
+
+  const uploadBtn = document.createElement('button');
+  uploadBtn.className = 'btn btn-secondary upload-btn';
+  uploadBtn.textContent = 'Upload Image';
+  uploadBtn.addEventListener('click', () => {
+    const fileInput = document.getElementById('file-input') as HTMLInputElement;
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  const srcBtn = document.createElement('button');
+  srcBtn.className = 'src-btn';
+  srcBtn.textContent = 'SRC \u2014 Hold to see original';
+  srcBtn.title = 'Hold to show original image (\\)';
+
+  srcWrapper.appendChild(uploadBtn);
+  srcWrapper.appendChild(srcBtn);
+  panelLeft.appendChild(srcWrapper);
+
+  let savedCanvas: ImageData | null = null;
+
+  function showOriginal(): void {
+    if (window.__cvlt.srcActive) return;
+    const cvs = canvasManager.getCanvas();
+    if (cvs.hidden) return; // no image loaded
+    const ctx = cvs.getContext('2d')!;
+    savedCanvas = ctx.getImageData(0, 0, cvs.width, cvs.height);
+    const original = canvasManager.getOriginalSource();
+    if (original) canvasManager.displayImageData(original);
+    window.__cvlt.srcActive = true;
+    srcBtn.classList.add('active');
+  }
+
+  function hideOriginal(): void {
+    if (!window.__cvlt.srcActive) return;
+    window.__cvlt.srcActive = false;
+    srcBtn.classList.remove('active');
+    if (savedCanvas) {
+      canvasManager.displayImageData(savedCanvas);
+      savedCanvas = null;
+    }
+  }
+
+  srcBtn.addEventListener('mousedown', showOriginal);
+  srcBtn.addEventListener('mouseup', hideOriginal);
+  srcBtn.addEventListener('mouseleave', () => { if (window.__cvlt.srcActive) hideOriginal(); });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === '\\') { e.preventDefault(); showOriginal(); }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === '\\' && window.__cvlt.srcActive) hideOriginal();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Readiness gates
@@ -181,7 +388,21 @@ function updateDreamButton(): void {
 function updateStylizeButton(): void {
   const picker = styleTool.controls.getStylePicker();
   const hasStyleImage = styleImageReady && picker?.getStyleImage() != null;
-  styleTool.controls.setActionEnabled(imageReady && hasStyleImage && styleModelReady);
+  const ready = imageReady && hasStyleImage && styleModelReady;
+  styleTool.controls.setActionEnabled(ready);
+
+  // Show the blocking reason on the button itself
+  if (ready) {
+    styleTool.controls.setButtonLabel('Stylize');
+  } else if (styleModelLoading) {
+    // Label is updated by the loading progress callback — don't overwrite
+  } else if (!styleModelReady) {
+    styleTool.controls.setButtonLabel('Loading models\u2026');
+  } else if (!imageReady) {
+    styleTool.controls.setButtonLabel('Load an image first');
+  } else if (!hasStyleImage) {
+    styleTool.controls.setButtonLabel('Select a style image');
+  }
 }
 
 window.addEventListener('cvlt:image-loaded', () => {
@@ -201,20 +422,8 @@ window.addEventListener('cvlt:style-selected', () => {
 // DeepDream model loading (eager — starts on app load)
 // ---------------------------------------------------------------------------
 
-function createStatusElement(): HTMLDivElement {
-  const status = document.createElement('div');
-  status.className = 'model-status pulse';
-  status.textContent = 'Loading model\u2026';
-
-  const rightPanelContent = document.getElementById('right-panel-content');
-  if (rightPanelContent) {
-    rightPanelContent.prepend(status);
-  }
-  return status;
-}
-
 async function initModel(): Promise<DreamModel | null> {
-  const status = createStatusElement();
+  dreamTool.controls.setModelLoading(true, 'Loading model\u2026');
 
   try {
     await tf.setBackend('webgl');
@@ -222,46 +431,15 @@ async function initModel(): Promise<DreamModel | null> {
 
     const loaded = await loadDreamModel((fraction: number) => {
       const pct = Math.round(fraction * 100);
-      status.textContent = `Loading model\u2026 ${pct}%`;
+      dreamTool.controls.setModelLoading(true, `Loading model\u2026 ${pct}%`);
     });
 
-    status.textContent = 'Model ready';
-    status.classList.remove('pulse');
-    setTimeout(() => status.remove(), 2000);
-
+    dreamTool.controls.setModelLoading(false);
     console.log('InceptionV3 model loaded successfully');
     return loaded;
   } catch (err) {
     console.error('Failed to load model:', err);
-    status.textContent = '';
-    status.style.color = '#ef4444';
-
-    const msg = document.createElement('span');
-    msg.textContent =
-      'Failed to load model. Ensure files exist in public/models/inception_v3/. ';
-    status.appendChild(msg);
-
-    const code = document.createElement('code');
-    code.textContent = 'python scripts/convert-model.py';
-    code.style.fontSize = '0.85em';
-    status.appendChild(code);
-
-    const retryBtn = document.createElement('button');
-    retryBtn.textContent = 'Retry';
-    retryBtn.style.marginLeft = '8px';
-    retryBtn.addEventListener('click', () => {
-      status.remove();
-      initModel().then((m) => {
-        if (m) {
-          model = m;
-          modelReady = true;
-          window.__cvlt.model = m;
-          updateDreamButton();
-        }
-      });
-    });
-    status.appendChild(retryBtn);
-
+    dreamTool.controls.setModelLoading(true, 'Failed to load model');
     return null;
   }
 }
@@ -277,89 +455,68 @@ modelPromise.then((m) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Style Transfer model loading (lazy — loads on first tool activation)
-// ---------------------------------------------------------------------------
-
-async function initStyleModel(): Promise<StyleTransferModel | null> {
-  if (styleModelLoading || styleModelReady) return styleModel;
-  styleModelLoading = true;
-
-  // Free GPU memory by disposing InceptionV3 before loading style models.
-  // WebGL can't hold all three models simultaneously.
-  if (model) {
-    console.log('[model-swap] Disposing InceptionV3 to free GPU memory');
-    model.dispose();
-    model = null;
-    modelReady = false;
-    window.__cvlt.model = null;
-    updateDreamButton();
-  }
-
-  const status = document.createElement('div');
-  status.className = 'model-status pulse';
-  status.textContent = 'Loading style models\u2026';
-
-  const rightPanelContent = document.getElementById('right-panel-content');
-  if (rightPanelContent) {
-    rightPanelContent.prepend(status);
-  }
-
-  try {
-    // Ensure WebGL backend is active (may already be set by DeepDream).
-    if (!tf.getBackend()) {
-      await tf.setBackend('webgl');
-    }
-
-    const loaded = await loadStyleTransferModel((fraction: number) => {
-      const pct = Math.round(fraction * 100);
-      status.textContent = `Loading style models\u2026 ${pct}%`;
-    });
-
-    status.textContent = 'Style models ready';
-    status.classList.remove('pulse');
-    setTimeout(() => status.remove(), 2000);
-
-    console.log('Style Transfer models loaded successfully');
-    styleModel = loaded;
-    styleModelReady = true;
-    styleModelLoading = false;
-    window.__cvlt.styleModel = loaded;
-    updateStylizeButton();
-    return loaded;
-  } catch (err) {
-    console.error('Failed to load style models:', err);
-    styleModelLoading = false;
-    status.textContent = '';
-    status.style.color = '#ef4444';
-
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    const msg = document.createElement('span');
-    msg.textContent = `Failed to load style models: ${errorMessage} `;
-    status.appendChild(msg);
-
-    const retryBtn = document.createElement('button');
-    retryBtn.textContent = 'Retry';
-    retryBtn.style.marginLeft = '8px';
-    retryBtn.addEventListener('click', () => {
-      status.remove();
-      initStyleModel();
-    });
-    status.appendChild(retryBtn);
-
-    return null;
-  }
-}
-
 // Listen for tool activation to swap models in/out of GPU memory.
 // Only one tool's model(s) live in WebGL at a time to avoid OOM freezes.
+//
+// A generation counter prevents race conditions when the user rapidly
+// switches tools — stale async loads are discarded on completion.
+let modelSwapGeneration = 0;
+
 nav.addEventListener('click', (e: Event) => {
   const target = (e.target as HTMLElement).closest('.nav-item[data-tool]') as HTMLElement | null;
   if (!target) return;
   const toolId = target.getAttribute('data-tool');
 
+  modelSwapGeneration++;
+  const myGeneration = modelSwapGeneration;
+
   if (toolId === 'style-transfer' && !styleModelReady && !styleModelLoading) {
-    queueMicrotask(() => initStyleModel());
+    queueMicrotask(async () => {
+      // Dispose InceptionV3 before loading style models.
+      if (model) {
+        console.log('[model-swap] Disposing InceptionV3 to free GPU memory');
+        model.dispose();
+        model = null;
+        modelReady = false;
+        window.__cvlt.model = null;
+        updateDreamButton();
+      }
+
+      styleModelLoading = true;
+      styleTool.controls.setButtonLabel('Loading models\u2026');
+      styleTool.controls.setStatus('Loading style models\u2026');
+
+      try {
+        if (!tf.getBackend()) await tf.setBackend('webgl');
+
+        const loaded = await loadStyleTransferModel((fraction: number) => {
+          const pct = Math.round(fraction * 100);
+          styleTool.controls.setButtonLabel(`Loading models\u2026 ${pct}%`);
+          styleTool.controls.setStatus(`Loading style models\u2026 ${pct}%`);
+        });
+
+        // Stale check: user navigated away while we were loading.
+        if (myGeneration !== modelSwapGeneration) {
+          console.log('[model-swap] Style load completed but generation is stale — disposing');
+          loaded.dispose();
+          styleModelLoading = false;
+          return;
+        }
+
+        console.log('Style Transfer models loaded successfully');
+        styleModel = loaded;
+        styleModelReady = true;
+        styleModelLoading = false;
+        window.__cvlt.styleModel = loaded;
+        updateStylizeButton();
+        styleTool.controls.setStatus('Style models loaded — ready');
+      } catch (err) {
+        console.error('Failed to load style models:', err);
+        styleModelLoading = false;
+        styleTool.controls.setButtonLabel('Model failed to load');
+        styleTool.controls.setStatus('Failed to load style models');
+      }
+    });
   } else if (toolId === 'deepdream' && !modelReady) {
     // Returning to DeepDream — dispose style models, reload InceptionV3.
     queueMicrotask(async () => {
@@ -373,6 +530,16 @@ nav.addEventListener('click', (e: Event) => {
       }
 
       const loaded = await initModel();
+
+      // Stale check
+      if (myGeneration !== modelSwapGeneration) {
+        if (loaded) {
+          console.log('[model-swap] Dream model load completed but generation is stale — disposing');
+          loaded.dispose();
+        }
+        return;
+      }
+
       if (loaded) {
         model = loaded;
         modelReady = true;
