@@ -87,7 +87,6 @@ export function createCanvasManager() {
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      console.error('Failed to load image file:', file.name);
     };
     img.src = url;
   }

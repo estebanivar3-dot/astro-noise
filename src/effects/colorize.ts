@@ -165,7 +165,7 @@ const colorizeEffect: PixelEffect = {
 export const colorizeDef: EffectToolDef = {
   effect: colorizeEffect,
   sliders: [
-    { key: 'tolerance', label: 'Tolerance', min: 5, max: 80, step: 1, defaultValue: 30, hint: 'How similar colors must be to merge into one region' },
+    { key: 'tolerance', label: 'Tolerance', min: 1, max: 100, step: 1, defaultValue: 30, hint: 'How similar colors must be to merge into one region' },
     { key: 'hueShift', label: 'Hue Shift', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'How much to randomly shift each region\u2019s hue' },
     { key: 'saturation', label: 'Saturation', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'Shift saturation (50 = no change)' },
     { key: 'lightness', label: 'Lightness', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'Shift lightness (50 = no change)' },

@@ -31,18 +31,28 @@ const burnEffect: PixelEffect = {
 
       switch (mode) {
         case 1: {
-          // Scorch — solarize + extreme color burn, pushes into hot oranges/magentas
-          const sr = r > 128 ? 255 - r : r;
-          const sg = g > 128 ? 255 - g : g;
-          const sb = b > 128 ? 255 - b : b;
-          // Color burn blend: darkens + saturates aggressively
-          nr = clamp(r < 255 ? 255 - ((255 - sr) * 255) / (r + 1) : 0);
-          ng = clamp(g < 200 ? (sg * 0.4) : sg);
-          nb = clamp(b < 200 ? (sb * 0.2) : sb * 0.5);
-          // Push toward hot orange/magenta
-          nr = clamp(nr * 1.4 + 40);
-          ng = clamp(ng * 0.6);
-          nb = clamp(nb * 0.8 + nr * 0.15);
+          // Scorch — scorched film: S-curve contrast + warm shift, blown amber highlights.
+          // Simulates heat-damaged film stock — charcoal shadows, amber mid-tones, golden blow-out.
+          const lum = r * 0.299 + g * 0.587 + b * 0.114;
+          // Smoothstep S-curve for aggressive contrast
+          const sc = (v: number): number => {
+            const t = v / 255;
+            return t * t * (3 - 2 * t) * 255;
+          };
+          const cr = sc(r);
+          const cg = sc(g);
+          const cb = sc(b);
+          // Warm colour grading: boost red, pull green toward red, crush blue
+          nr = clamp(cr * 1.3 + 30);
+          ng = clamp(cg * 0.85 + cr * 0.15);
+          nb = clamp(cb * 0.4);
+          // Highlights blow out to amber/gold
+          if (lum > 160) {
+            const t = (lum - 160) / 95;
+            nr = clamp(nr + t * (255 - nr));
+            ng = clamp(ng + t * (200 - ng));
+            nb = clamp(nb + t * (80 - nb));
+          }
           break;
         }
         case 2: {
@@ -53,6 +63,16 @@ const burnEffect: PixelEffect = {
           nr = clamp(sr * 1.3);
           ng = clamp(sg * 1.1);
           nb = clamp(sb * 1.4);
+          break;
+        }
+        case 3: {
+          // Ember — luminance solarize fold mapped through fire-gradient power curves.
+          // Mid-tones glow white-hot, darks and highlights curve into deep reds/oranges.
+          const el = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+          const t = el > 0.5 ? (1 - el) * 2 : el * 2;
+          nr = clamp(Math.pow(t, 0.45) * 360);
+          ng = clamp(Math.pow(t, 1.5) * 260);
+          nb = clamp(Math.pow(t, 4.0) * 255);
           break;
         }
         default: {
@@ -83,7 +103,7 @@ export const burnDef: EffectToolDef = {
     { key: 'intensity', label: 'Intensity', min: 1, max: 100, step: 1, defaultValue: 40, hint: 'How much each brush stroke burns' },
   ],
   modes: [
-    { key: 'mode', modes: ['Solarize', 'Scorch', 'Neon'], defaultIndex: 0 },
+    { key: 'mode', modes: ['Solarize', 'Scorch', 'Neon', 'Ember'], defaultIndex: 0 },
   ],
   stackingBrush: true,
 };

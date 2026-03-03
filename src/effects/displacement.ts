@@ -80,7 +80,7 @@ const displacementEffect: PixelEffect = {
 export const displacementDef: EffectToolDef = {
   effect: displacementEffect,
   sliders: [
-    { key: 'amount', label: 'Amount', min: 0, max: 200, step: 1, defaultValue: 60, hint: 'How far pixels shift' },
+    { key: 'amount', label: 'Amount', min: 0, max: 500, step: 1, defaultValue: 60, hint: 'How far pixels shift' },
   ],
   modes: [
     { key: 'mode', modes: ['Luminance', 'Red Channel', 'Blue Channel'], defaultIndex: 0 },

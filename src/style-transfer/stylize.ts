@@ -23,26 +23,6 @@ export const DEFAULT_STYLE_CONFIG: StyleConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// Diagnostics
-// ---------------------------------------------------------------------------
-
-/** Debug-only tensor diagnostics. Uses blocking dataSync() — never call in production. */
-const DEBUG_TENSORS = false;
-
-function tensorStats(t: tf.Tensor, label: string): void {
-  if (!DEBUG_TENSORS) return;
-  const data = t.dataSync();
-  let min = Infinity, max = -Infinity, sum = 0;
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] < min) min = data[i];
-    if (data[i] > max) max = data[i];
-    sum += data[i];
-  }
-  const mean = sum / data.length;
-  console.log(`[stylize] ${label}: shape=${t.shape} min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)}`);
-}
-
-// ---------------------------------------------------------------------------
 // Core algorithm
 // ---------------------------------------------------------------------------
 
@@ -109,7 +89,6 @@ export async function stylizeImage(
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('texture size') && maxDim !== DIMS_TO_TRY[DIMS_TO_TRY.length - 1]) {
-        console.warn(`[stylize] WebGL texture limit hit at ${maxDim}px — retrying smaller`);
         continue;
       }
       throw err;
@@ -127,9 +106,6 @@ async function stylizeAtResolution(
   maxDim: number,
   onProgress?: (fraction: number) => void,
 ): Promise<ImageData> {
-  const tensorsBefore = tf.memory().numTensors;
-  console.log(`[stylize] start at ${maxDim}px — tensors: ${tensorsBefore}`);
-
   const scaledContent = downscaleImageData(contentImageData, maxDim);
   const scaledStyle = downscaleImageData(styleImageData, maxDim);
 
@@ -141,7 +117,6 @@ async function stylizeAtResolution(
 
     // 1. Compute style bottleneck from the style image.
     const styleBottleneck = model.predictStyle(scaledStyle);
-    tensorStats(styleBottleneck, 'styleBottleneck');
     onProgress?.(0.25);
     await yieldToUI();
 
@@ -174,7 +149,6 @@ async function stylizeAtResolution(
 
     // 3. Run the transformer.
     const resultTensor = model.stylize(scaledContent, finalBottleneck);
-    tensorStats(resultTensor, 'transformerOutput');
     finalBottleneck.dispose();
     onProgress?.(0.85);
     await yieldToUI();
@@ -191,20 +165,9 @@ async function stylizeAtResolution(
     tf.engine().endScope();
     onProgress?.(1.0);
 
-    const tensorsAfter = tf.memory().numTensors;
-    console.log(
-      `[stylize] done at ${maxDim}px — tensors: ${tensorsAfter} (delta: ${tensorsAfter - tensorsBefore})`,
-    );
-
     return imageData;
   } catch (err) {
     tf.engine().endScope();
-
-    const tensorsAfter = tf.memory().numTensors;
-    const leaked = tensorsAfter - tensorsBefore;
-    if (leaked > 0) {
-      console.warn(`[stylize] cleaned up tensors after error (delta: ${leaked})`);
-    }
     throw err;
   }
 }

@@ -41,9 +41,9 @@ export function createSlider(
   input.step = String(step);
   input.value = String(defaultValue);
 
-  input.addEventListener('input', () => {
-    valueEl.textContent = input.value;
-  });
+  const updateDisplay = (): void => { valueEl.textContent = input.value; };
+  input.addEventListener('input', updateDisplay);
+  input.addEventListener('change', updateDisplay);
 
   group.appendChild(input);
 

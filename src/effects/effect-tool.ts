@@ -34,6 +34,13 @@ export function createEffectTool(
   let getConfigFn: (() => EffectConfig) | null = null;
   let rafId = 0;
 
+  // Persist slider/mode values across tool switches
+  let savedConfig: EffectConfig | null = null;
+  let savedOpacity = 100;
+
+  // Global opacity slider reference (accessible from refresh)
+  let opacityInput: HTMLInputElement | null = null;
+
   // For directional drag → slider sync
   let primarySliderInput: HTMLInputElement | null = null;
   let primarySliderValueEl: HTMLSpanElement | null = null;
@@ -43,6 +50,9 @@ export function createEffectTool(
   // Drag-bound slider references (accessible from refresh)
   const dragBoundInputs: Record<string, HTMLInputElement> = {};
   const dragBoundValueEls: Record<string, HTMLSpanElement> = {};
+  // All slider references (accessible from refresh for intensity sync)
+  const allSliderInputs: Record<string, HTMLInputElement> = {};
+  const allSliderValueEls: Record<string, HTMLSpanElement> = {};
   // Brush mask history — managed here because the compositor's interactiveMask
   // gets overwritten by brush.getMask() every refresh, making compositor undo useless.
   const brushHistory: Float32Array[] = [];
@@ -51,44 +61,86 @@ export function createEffectTool(
   const sourceHistory: ImageData[] = [];
   // Snapshot of source when tool mounted, so Reset can fully revert stacking bakes.
   let initialSource: ImageData | null = null;
+  // Whether the user explicitly clicked Apply — stacking brush auto-bakes on each
+  // stroke, but switching tools without Apply should revert to initialSource.
+  let userApplied = false;
+  // Last image displayed on canvas — Apply commits exactly what the user sees
+  // (includes tonal masking applied outside the compositor).
+  let lastDisplayedOutput: ImageData | null = null;
+  // After Apply, suppress re-rendering until the user moves a slider, changes
+  // a mode, or interacts with the canvas.  Prevents the "double-stack" where
+  // the same effect immediately re-applies on top of the freshly baked source.
+  let effectSuppressed = false;
 
   function refresh(): void {
     if (window.__cvlt?.srcActive) return;
     const source = callbacks.getSourceImage();
     if (!source || !getConfigFn) return;
 
+    // After Apply, stay dormant — show the baked source, don't re-render.
+    if (effectSuppressed) {
+      callbacks.displayImageData(source);
+      return;
+    }
+
     compositor.setSource(source);
 
-    // Directional drag → slider sync
-    if (isInteractiveMode && effect.interactionType === 'directional') {
-      const dir = brush.getDirection();
-      lastDir = dir;
+    // Directional drag ↔ slider sync
+    // Only overwrite sliders from brush direction while actively dragging.
+    // When the user adjusts sliders manually, those values are the source of truth.
+    // Directional drag ↔ slider sync also fires for point-fill in Full Image mode,
+    // where the brush switches to 'directional' so dragging controls tolerance.
+    const isDirectionalDrag = (isInteractiveMode && effect.interactionType === 'directional')
+      || (!isInteractiveMode && effect.interactionType === 'point-fill');
+    if (isDirectionalDrag) {
+      if (brush.isDragging()) {
+        const dir = brush.getDirection();
+        lastDir = dir;
 
-      if (dragMapping === '2d') {
-        // 2D: update drag-bound sliders (X, Y) from drag position
-        for (const sliderDef of sliders) {
-          if (sliderDef.dragBind && dragBoundInputs[sliderDef.key]) {
-            const raw = sliderDef.dragBind === 'x' ? dir.x : dir.y;
-            const clamped = Math.max(sliderDef.min, Math.min(sliderDef.max, raw));
-            const step = sliderDef.step || 1;
-            const snapped = Math.round(clamped / step) * step;
-            dragBoundInputs[sliderDef.key].value = String(snapped);
-            dragBoundValueEls[sliderDef.key].textContent = String(snapped);
+        if (dragMapping === '2d') {
+          // 2D: update drag-bound sliders (X, Y) from drag position
+          for (const sliderDef of sliders) {
+            if (sliderDef.dragBind && dragBoundInputs[sliderDef.key]) {
+              const raw = sliderDef.dragBind === 'x' ? dir.x : dir.y;
+              const clamped = Math.max(sliderDef.min, Math.min(sliderDef.max, raw));
+              const step = sliderDef.step || 1;
+              const snapped = Math.round(clamped / step) * step;
+              dragBoundInputs[sliderDef.key].value = String(snapped);
+              dragBoundValueEls[sliderDef.key].textContent = String(snapped);
+            }
           }
+
+          // Map drag distance → intensity (first non-drag-bound slider).
+          // Farther from center = more intense. Gives the canvas interaction
+          // a unified feel — everything responds to the gesture, not just X/Y.
+          const intensityDef = sliders.find(s => !s.dragBind && !s.noIntensityMap);
+          if (intensityDef && allSliderInputs[intensityDef.key]) {
+            const canvasEl = brush.getCanvas();
+            const refDist = canvasEl
+              ? Math.sqrt(canvasEl.width ** 2 + canvasEl.height ** 2) * 0.3
+              : 300;
+            const dist = Math.sqrt(dir.x ** 2 + dir.y ** 2);
+            const raw = (dist / refDist) * intensityDef.max;
+            const clamped = Math.max(intensityDef.min, Math.min(intensityDef.max, raw));
+            const step = intensityDef.step || 1;
+            const snapped = Math.round(clamped / step) * step;
+            allSliderInputs[intensityDef.key].value = String(snapped);
+            allSliderValueEls[intensityDef.key].textContent = String(snapped);
+          }
+        } else if (primarySliderInput) {
+          // 1D: horizontal drag delta accumulates from dragBaseValue
+          const canvasEl = brush.getCanvas() ?? document.getElementById('canvas') as HTMLCanvasElement | null;
+          const canvasW = canvasEl?.width ?? 800;
+          const sMin = parseFloat(primarySliderInput.min);
+          const sMax = parseFloat(primarySliderInput.max);
+          const range = sMax - sMin;
+          const delta = (dir.x / canvasW) * range;
+          const newVal = Math.max(sMin, Math.min(sMax, dragBaseValue + delta));
+          const step = parseFloat(primarySliderInput.step) || 1;
+          const snapped = Math.round(newVal / step) * step;
+          primarySliderInput.value = String(snapped);
+          if (primarySliderValueEl) primarySliderValueEl.textContent = String(snapped);
         }
-      } else if (primarySliderInput) {
-        // 1D: horizontal drag delta accumulates from dragBaseValue
-        const canvasEl = brush.getCanvas() ?? document.getElementById('canvas') as HTMLCanvasElement | null;
-        const canvasW = canvasEl?.width ?? 800;
-        const sMin = parseFloat(primarySliderInput.min);
-        const sMax = parseFloat(primarySliderInput.max);
-        const range = sMax - sMin;
-        const delta = (dir.x / canvasW) * range;
-        const newVal = Math.max(sMin, Math.min(sMax, dragBaseValue + delta));
-        const step = parseFloat(primarySliderInput.step) || 1;
-        const snapped = Math.round(newVal / step) * step;
-        primarySliderInput.value = String(snapped);
-        if (primarySliderValueEl) primarySliderValueEl.textContent = String(snapped);
       }
     }
 
@@ -103,15 +155,27 @@ export function createEffectTool(
       }
     }
 
+    // Point-fill: inject the absolute click coordinates as seedX/seedY.
+    // The brush stores these in its direction vector after a click.
+    if (isInteractiveMode && effect.interactionType === 'point-fill') {
+      const dir = brush.getDirection();
+      config['seedX'] = dir.x;
+      config['seedY'] = dir.y;
+    }
+
     // For stacking brush in interactive mode, effect renders at full intensity —
     // the mask controls per-pixel blend. In full image mode, respect the slider.
-    if (stackingBrush && isInteractiveMode && sliders.length > 0) {
+    // Skip for point-fill: tolerance is a region-matching parameter, not intensity.
+    if (stackingBrush && isInteractiveMode && sliders.length > 0
+        && effect.interactionType !== 'point-fill') {
       config[sliders[0].key] = sliders[0].max;
     }
 
     compositor.setEffect(effect, config);
 
-    if (isInteractiveMode && effect.interactionType !== 'directional') {
+    if (isInteractiveMode
+        && effect.interactionType !== 'directional'
+        && effect.interactionType !== 'point-fill') {
       // When no painting has happened yet, pass a zero mask so the compositor
       // shows the source image — not the full effect. Without this, null mask
       // means "weight 1 everywhere" which causes a jarring jump when the first
@@ -126,13 +190,52 @@ export function createEffectTool(
       compositor.setInteractiveMask(null);
     }
 
-    const tonalConfig = tonalCtrl.getConfig();
-    compositor.setTonalMask(computeTonalMask(source, tonalConfig));
+    // Tonal targeting is applied as a separate global pass, independent of the
+    // brush mask.  This lets it work on stacking-brush effects even after strokes
+    // have been baked into the source (where the brush mask is cleared to zero).
+    compositor.setTonalMask(null);
 
     const output = compositor.composite();
-    if (output) {
-      callbacks.displayImageData(output);
+    if (!output) return;
+
+    // Global tonal pass — blend between a reference source and the composited
+    // output.  For stacking brush the reference is initialSource (the image
+    // before any strokes were baked), so adjusting tonal after painting still
+    // masks the baked work.  For everything else, the reference is the current
+    // source and the math is equivalent to the old iWeight*tWeight approach.
+    const tonalConfig = tonalCtrl.getConfig();
+    const tonalRef = (stackingBrush && initialSource) ? initialSource : source;
+    const tonalMask = computeTonalMask(tonalRef, tonalConfig);
+
+    if (tonalMask) {
+      const dst = output.data;
+      const ref = tonalRef.data;
+      for (let i = 0; i < dst.length; i += 4) {
+        const tw = tonalMask[i >> 2];
+        if (tw >= 1) continue;          // fully in range — keep output as-is
+        const inv = 1 - tw;
+        dst[i]     = ref[i]     * inv + dst[i]     * tw;
+        dst[i + 1] = ref[i + 1] * inv + dst[i + 1] * tw;
+        dst[i + 2] = ref[i + 2] * inv + dst[i + 2] * tw;
+      }
     }
+
+    // Global opacity — blend effect output with source
+    const opacity = opacityInput ? parseInt(opacityInput.value, 10) : 100;
+    if (opacity < 100) {
+      const dst = output.data;
+      const src = source.data;
+      const t = opacity / 100;
+      const inv = 1 - t;
+      for (let i = 0; i < dst.length; i += 4) {
+        dst[i]     = src[i]     * inv + dst[i]     * t;
+        dst[i + 1] = src[i + 1] * inv + dst[i + 1] * t;
+        dst[i + 2] = src[i + 2] * inv + dst[i + 2] * t;
+      }
+    }
+
+    callbacks.displayImageData(output);
+    lastDisplayedOutput = output;
   }
 
   function debouncedRefresh(): void {
@@ -157,15 +260,17 @@ export function createEffectTool(
 
       // Mode toggles (effect modes like Split/Cross/Tri-angle)
       const modeGetters: Record<string, () => number> = {};
+      const modeSetters: Record<string, (i: number) => void> = {};
       const modeGroups: HTMLDivElement[] = [];
       if (modes) {
         for (const modeDef of modes) {
-          const { group, getMode } = createModeToggle(modeDef.modes, modeDef.defaultIndex ?? 0);
+          const { group, getMode, setMode } = createModeToggle(modeDef.modes, modeDef.defaultIndex ?? 0);
           modeGetters[modeDef.key] = getMode;
+          modeSetters[modeDef.key] = setMode;
           group.style.marginBottom = '6px';
           modeGroups.push(group);
           controlsContainer.appendChild(group);
-          group.addEventListener('click', () => debouncedRefresh());
+          group.addEventListener('click', () => { effectSuppressed = false; debouncedRefresh(); });
         }
       }
 
@@ -213,7 +318,9 @@ export function createEffectTool(
 
         fullBtn.addEventListener('click', () => {
           isInteractiveMode = false;
-          brush.setInteractionType('none');
+          effectSuppressed = false;
+          // Point-fill in Full Image: switch to directional so drag controls tolerance
+          brush.setInteractionType(effect.interactionType === 'point-fill' ? 'directional' : 'none');
           brush.clearMask();
           updateModeButtons();
           if (brushSizeGroup) brushSizeGroup.style.display = 'none';
@@ -222,6 +329,7 @@ export function createEffectTool(
 
         interBtn.addEventListener('click', () => {
           isInteractiveMode = true;
+          effectSuppressed = false;
           brush.setInteractionType(effect.interactionType);
           updateModeButtons();
           if (brushSizeGroup && (effect.interactionType === 'area-paint' || effect.interactionType === 'smear')) {
@@ -248,19 +356,37 @@ export function createEffectTool(
         );
         sliderInputs[sliderDef.key] = input;
         sliderValueEls[sliderDef.key] = valueEl;
-        // Store drag-bound slider refs in outer scope so refresh() can update them
+        // Store refs in outer scope so refresh() can update them
+        allSliderInputs[sliderDef.key] = input;
+        allSliderValueEls[sliderDef.key] = valueEl;
         if (sliderDef.dragBind) {
           dragBoundInputs[sliderDef.key] = input;
           dragBoundValueEls[sliderDef.key] = valueEl;
         }
         interactiveElements.push(input);
-        input.addEventListener('input', () => debouncedRefresh());
+        const onSliderChange = (): void => {
+          effectSuppressed = false;
+          // When a drag-bound slider is changed manually, sync back to the brush
+          // so the next drag starts from the current slider position.
+          if (sliderDef.dragBind && effect.interactionType === 'directional') {
+            const dir = brush.getDirection();
+            const val = parseFloat(input.value);
+            if (sliderDef.dragBind === 'x') {
+              brush.setDirection(val, dir.y);
+            } else {
+              brush.setDirection(dir.x, val);
+            }
+          }
+          debouncedRefresh();
+        };
+        input.addEventListener('input', onSliderChange);
+        input.addEventListener('change', onSliderChange);
         controlsContainer.appendChild(group);
       }
 
       // Brush Size — grouped with other sliders (for area-paint / smear effects)
       if (supportsInteractive && (effect.interactionType === 'area-paint' || effect.interactionType === 'smear')) {
-        const { group: bsGroup, input: brushSizeInput } = createSlider('Brush Size', 5, 100, 1, 20);
+        const { group: bsGroup, input: brushSizeInput } = createSlider('Brush Size', 5, 200, 1, 50);
         brushSizeGroup = bsGroup;
         brushSizeInput.addEventListener('input', () => {
           brush.setBrushRadius(parseInt(brushSizeInput.value, 10));
@@ -272,8 +398,17 @@ export function createEffectTool(
         controlsContainer.appendChild(brushSizeGroup);
       }
 
-      // Track primary slider for directional drag sync
-      if (sliders.length > 0 && effect.interactionType === 'directional') {
+      // Global opacity slider
+      const opacitySlider = createSlider('Opacity', 0, 100, 1, savedOpacity, 'Blend effect with original');
+      opacityInput = opacitySlider.input;
+      opacityInput.addEventListener('input', () => { effectSuppressed = false; debouncedRefresh(); });
+      opacityInput.addEventListener('change', () => { effectSuppressed = false; debouncedRefresh(); });
+      controlsContainer.appendChild(opacitySlider.group);
+
+      // Track primary slider for directional drag sync.
+      // Also set up for point-fill — in Full Image mode, drag controls tolerance.
+      if (sliders.length > 0
+          && (effect.interactionType === 'directional' || effect.interactionType === 'point-fill')) {
         primarySliderInput = sliderInputs[sliders[0].key];
         primarySliderValueEl = sliderValueEls[sliders[0].key];
         dragBaseValue = parseFloat(primarySliderInput.value);
@@ -291,9 +426,30 @@ export function createEffectTool(
         return config;
       };
 
+      // Restore saved slider/mode values from previous session with this tool
+      if (savedConfig) {
+        for (const sliderDef of sliders) {
+          if (savedConfig[sliderDef.key] != null) {
+            const val = String(savedConfig[sliderDef.key]);
+            sliderInputs[sliderDef.key].value = val;
+            sliderValueEls[sliderDef.key].textContent = val;
+          }
+        }
+        for (const [key, setMode] of Object.entries(modeSetters)) {
+          if (savedConfig[key] != null) {
+            setMode(savedConfig[key] as number);
+          }
+        }
+      }
+
       // Interactive mode wiring (UI + isInteractiveMode already set above)
       if (supportsInteractive) {
         brush.setInteractionType(effect.interactionType);
+        // Point-fill: start with sentinel (-1,-1) so no fill renders until first click.
+        // Default direction (0,0) is a valid canvas coordinate and would fill from top-left.
+        if (effect.interactionType === 'point-fill') {
+          brush.setDirection(-1, -1);
+        }
         // 2D effects use absolute direction (cursor-to-center, no reset between drags)
         if (dragMapping === '2d') {
           brush.setDirectionMode('absolute');
@@ -301,7 +457,9 @@ export function createEffectTool(
 
         if (stackingBrush) {
           brush.setAdditive(true);
-          if (sliders.length > 0) {
+          // Wire first slider → brush intensity for area-paint stacking brush.
+          // Skip for point-fill — tolerance is a region-matching param, not brush opacity.
+          if (sliders.length > 0 && effect.interactionType !== 'point-fill') {
             const intensityInput = sliderInputs[sliders[0].key];
             const updateBrushIntensity = (): void => {
               const sMax = parseFloat(intensityInput.max) || 100;
@@ -315,7 +473,7 @@ export function createEffectTool(
 
       // Tonal targeting
       tonalCtrl.mount(controlsContainer);
-      tonalCtrl.onChange(() => debouncedRefresh());
+      tonalCtrl.onChange(() => { effectSuppressed = false; debouncedRefresh(); });
       interactiveElements.push(...tonalCtrl.getInteractiveElements());
 
       // Floating undo overlay on the canvas — appears when brush has history
@@ -345,6 +503,7 @@ export function createEffectTool(
           if (prev) {
             callbacks.onApply(prev);
             brush.clearMask();
+            if (effect.interactionType === 'point-fill') brush.setDirection(-1, -1);
             refresh();
             updateUndoVisibility();
           }
@@ -382,18 +541,31 @@ export function createEffectTool(
       resetBtn.textContent = 'Reset';
 
       applyBtn.addEventListener('click', () => {
-        compositor.apply();
-        const newSource = compositor.getSource();
-        if (newSource) {
-          callbacks.onApply(newSource);
-          // Update initialSource so future Reset reverts to post-apply state
-          initialSource = new ImageData(new Uint8ClampedArray(newSource.data), newSource.width, newSource.height);
+        // Commit what the user sees — lastDisplayedOutput already includes the
+        // global tonal pass, so it's the authoritative "what you see is what you get".
+        const commit = lastDisplayedOutput;
+        if (commit) {
+          const img = new ImageData(new Uint8ClampedArray(commit.data), commit.width, commit.height);
+          callbacks.onApply(img);
+          initialSource = new ImageData(new Uint8ClampedArray(commit.data), commit.width, commit.height);
+        } else {
+          // Fallback — no tonal active, use compositor result directly
+          compositor.apply();
+          const newSource = compositor.getSource();
+          if (newSource) {
+            callbacks.onApply(newSource);
+            initialSource = new ImageData(new Uint8ClampedArray(newSource.data), newSource.width, newSource.height);
+          }
         }
+        userApplied = true;
+        effectSuppressed = true;
         brush.clearMask();
         brushHistory.length = 0;
         sourceHistory.length = 0;
         updateUndoVisibility();
-        refresh();
+        // Show the baked result without re-rendering the effect on top.
+        const src = callbacks.getSourceImage();
+        if (src) callbacks.displayImageData(src);
       });
 
       resetBtn.addEventListener('click', () => {
@@ -422,14 +594,16 @@ export function createEffectTool(
       const canvas = canvasContainer.querySelector('canvas') as HTMLCanvasElement | null;
       if (canvas) {
         brush.attach(canvas);
-        brush.onChange(() => debouncedRefresh());
+        brush.onChange(() => { effectSuppressed = false; debouncedRefresh(); });
         brush.onDragStart(() => {
           if (primarySliderInput) {
             dragBaseValue = parseFloat(primarySliderInput.value);
           }
           // Snapshot BEFORE the stroke so undo restores pre-stroke state.
-          // Only for brush-based interactions (area-paint / smear), not directional.
-          const isBrush = effect.interactionType === 'area-paint' || effect.interactionType === 'smear';
+          // For brush-based interactions and point-fill (each click bakes).
+          const isBrush = effect.interactionType === 'area-paint'
+            || effect.interactionType === 'smear'
+            || effect.interactionType === 'point-fill';
           if (isBrush) {
             if (stackingBrush) {
               // Save source image — each stroke auto-bakes, so undo restores source
@@ -451,6 +625,11 @@ export function createEffectTool(
               callbacks.onApply(result);
               brush.clearMask();
             }
+            // Point-fill: reset seed to sentinel so subsequent refreshes
+            // don't re-apply the fill (the stroke is already baked).
+            if (effect.interactionType === 'point-fill') {
+              brush.setDirection(-1, -1);
+            }
           }
           updateUndoVisibility();
         });
@@ -459,7 +638,9 @@ export function createEffectTool(
       // Keyboard shortcuts
       function onKeyDown(e: KeyboardEvent): void {
         // Cmd+Z for undo
-        const isBrush = effect.interactionType === 'area-paint' || effect.interactionType === 'smear';
+        const isBrush = effect.interactionType === 'area-paint'
+          || effect.interactionType === 'smear'
+          || effect.interactionType === 'point-fill';
         if ((e.metaKey || e.ctrlKey) && e.key === 'z' && isInteractiveMode && isBrush) {
           e.preventDefault();
           if (stackingBrush) {
@@ -467,6 +648,7 @@ export function createEffectTool(
             if (prev) {
               callbacks.onApply(prev);
               brush.clearMask();
+              if (effect.interactionType === 'point-fill') brush.setDirection(-1, -1);
               refresh();
               updateUndoVisibility();
             }
@@ -482,12 +664,21 @@ export function createEffectTool(
       }
       window.addEventListener('keydown', onKeyDown);
 
-      // Enable Apply when image loads
+      // Enable Apply when image loads (including when user replaces the image)
       function onImageLoaded(): void {
         applyBtn.disabled = false;
         const src = callbacks.getSourceImage();
-        if (src && !initialSource) {
+        if (src) {
+          // Always update — user may have uploaded a new image while this tool is active.
           initialSource = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+          // Clear stale history from the previous image
+          brushHistory.length = 0;
+          sourceHistory.length = 0;
+          brush.clearMask();
+          if (effect.interactionType === 'point-fill') brush.setDirection(-1, -1);
+          userApplied = false;
+          effectSuppressed = false;
+          updateUndoVisibility();
         }
         refresh();
       }
@@ -507,6 +698,9 @@ export function createEffectTool(
           applyBtn.disabled = !enabled;
         },
         destroy(): void {
+          // Save current slider/mode values so they persist across tool switches
+          if (getConfigFn) savedConfig = getConfigFn();
+          if (opacityInput) savedOpacity = parseInt(opacityInput.value, 10);
           cancelAnimationFrame(rafId);
           brush.detach();
           compositor.destroy();
@@ -515,6 +709,13 @@ export function createEffectTool(
           window.removeEventListener('cvlt:image-loaded', onImageLoaded);
           getConfigFn = null;
           isInteractiveMode = false;
+          // Stacking brush auto-bakes strokes into the source. If the user
+          // switched away without clicking Apply, revert to the pre-tool snapshot.
+          if (stackingBrush && !userApplied && initialSource) {
+            callbacks.onApply(new ImageData(
+              new Uint8ClampedArray(initialSource.data), initialSource.width, initialSource.height,
+            ));
+          }
           // Reset canvas to source (undo any unapplied effect preview)
           const src = callbacks.getSourceImage();
           if (src) callbacks.displayImageData(src);

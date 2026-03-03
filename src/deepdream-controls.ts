@@ -7,7 +7,9 @@ import { DREAM_LAYERS } from './model.ts';
 import type { DreamLayerName } from './model.ts';
 import type { DreamConfig } from './deepdream.ts';
 import type { Tool, ToolControls } from './router.ts';
-import { createSlider } from './effects/ui-helpers.ts';
+import { createSlider, createDivider } from './effects/ui-helpers.ts';
+import { createTonalControls } from './effects/tonal-controls.ts';
+import { blendDreamResult } from './generate/dream-blend.ts';
 
 // ---------------------------------------------------------------------------
 // Re-exports for main.ts backward compatibility
@@ -56,6 +58,10 @@ export interface ControlsManager {
   setHasResult(has: boolean): void;
   /** Show model loading state in the layer dropdown. */
   setModelLoading(loading: boolean, message?: string): void;
+  /** Store source + dream result for post-blend controls. */
+  setDreamImages(source: ImageData, dream: ImageData): void;
+  /** Get the blended result (with opacity + tonal applied). */
+  getBlendedResult(): ImageData | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +72,7 @@ export function createDeepDreamTool(callbacks: {
   onDream: () => void;
   onApply: () => void;
   onReset: () => void;
+  displayImageData: (img: ImageData) => void;
 }): Tool & { controls: ControlsManager } {
   // Internal state shared between createRightPanel calls and the
   // ControlsManager facade. These are set when createRightPanel builds the UI.
@@ -74,6 +81,7 @@ export function createDeepDreamTool(callbacks: {
   let intensityInput: HTMLInputElement;
   let iterationsInput: HTMLInputElement;
   let octavesInput: HTMLInputElement;
+  let opacityInput: HTMLInputElement;
   let dreamBtn: HTMLButtonElement;
   let applyBtn: HTMLButtonElement;
   let resetBtn: HTMLButtonElement;
@@ -81,6 +89,20 @@ export function createDeepDreamTool(callbacks: {
   let progressFill: HTMLDivElement;
   let statusText: HTMLDivElement;
   let interactiveElements: (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[] = [];
+
+  // Post-blend state
+  const tonalCtrl = createTonalControls();
+  let blendSource: ImageData | null = null;
+  let blendDream: ImageData | null = null;
+
+  /** Re-blend and display whenever opacity or tonal sliders change. */
+  function refreshBlend(): void {
+    if (!blendSource || !blendDream) return;
+    const opacity = parseFloat(opacityInput?.value ?? '100') / 100;
+    const tonalConfig = tonalCtrl.getConfig();
+    const blended = blendDreamResult(blendSource, blendDream, opacity, tonalConfig);
+    callbacks.displayImageData(blended);
+  }
 
   // ---- ControlsManager (backward-compatible API for main.ts) ----
 
@@ -165,6 +187,18 @@ export function createDeepDreamTool(callbacks: {
         if (loadingLabel) loadingLabel.remove();
       }
     },
+
+    setDreamImages(source: ImageData, dream: ImageData): void {
+      blendSource = source;
+      blendDream = dream;
+    },
+
+    getBlendedResult(): ImageData | null {
+      if (!blendSource || !blendDream) return null;
+      const opacity = parseFloat(opacityInput?.value ?? '100') / 100;
+      const tonalConfig = tonalCtrl.getConfig();
+      return blendDreamResult(blendSource, blendDream, opacity, tonalConfig);
+    },
   };
 
   // ---- Tool interface ----
@@ -236,6 +270,25 @@ export function createDeepDreamTool(callbacks: {
       octavesInput = oInput;
       controlsContainer.appendChild(octavesGroup);
 
+      // ---- Post-processing: Opacity + Tonal ----
+      controlsContainer.appendChild(createDivider());
+
+      const postLabel = document.createElement('div');
+      postLabel.className = 'section-label';
+      postLabel.textContent = 'Post-Processing';
+      controlsContainer.appendChild(postLabel);
+
+      const { group: opacityGroup, input: opInput } = createSlider(
+        'Opacity', 0, 100, 1, 100,
+        'Blend between source and dream result',
+      );
+      opacityInput = opInput;
+      opacityInput.addEventListener('input', () => refreshBlend());
+      controlsContainer.appendChild(opacityGroup);
+
+      tonalCtrl.mount(controlsContainer);
+      tonalCtrl.onChange(() => refreshBlend());
+
       // ---- Progress bar (overlay inside canvas container) ----
       progressGroup = document.createElement('div');
       progressGroup.className = 'progress-overlay';
@@ -299,6 +352,8 @@ export function createDeepDreamTool(callbacks: {
         intensityInput,
         iterationsInput,
         octavesInput,
+        opacityInput,
+        ...tonalCtrl.getInteractiveElements(),
         dreamBtn,
         applyBtn,
         resetBtn,

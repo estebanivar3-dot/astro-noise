@@ -102,7 +102,7 @@ export const squaresDef: EffectToolDef = {
   effect: squaresEffect,
   sliders: [
     { key: 'intensity', label: 'Intensity', min: 1, max: 200, step: 1, defaultValue: 80, hint: 'How much each brush stroke corrupts' },
-    { key: 'blockSize', label: 'Block Size', min: 4, max: 128, step: 2, defaultValue: 24, hint: 'Size of displaced blocks' },
+    { key: 'blockSize', label: 'Block Size', min: 4, max: 256, step: 2, defaultValue: 24, hint: 'Size of displaced blocks' },
   ],
   modes: [
     { key: 'mode', modes: ['Block Shift', 'Row Glitch', 'Byte Corrupt'], defaultIndex: 0 },

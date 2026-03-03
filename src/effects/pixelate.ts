@@ -56,7 +56,7 @@ export const pixelateDef: EffectToolDef = {
   effect: pixelateEffect,
   sliders: [
     { key: 'intensity', label: 'Intensity', min: 1, max: 100, step: 1, defaultValue: 40, hint: 'How much each brush stroke pixelates' },
-    { key: 'blockSize', label: 'Block Size', min: 2, max: 64, step: 1, defaultValue: 8, hint: 'Size of each pixel block' },
+    { key: 'blockSize', label: 'Block Size', min: 2, max: 200, step: 1, defaultValue: 8, hint: 'Size of each pixel block' },
   ],
   stackingBrush: true,
 };

@@ -93,8 +93,10 @@ const slitScanEffect: PixelEffect = {
 export const slitScanDef: EffectToolDef = {
   effect: slitScanEffect,
   sliders: [
-    { key: 'amount', label: 'Amount', min: 0, max: 200, step: 1, defaultValue: 60, hint: 'How far each scan line shifts' },
-    { key: 'frequency', label: 'Frequency', min: 1, max: 20, step: 1, defaultValue: 3, hint: 'Oscillation frequency of the offset pattern' },
+    { key: 'amount', label: 'Amount', min: 0, max: 400, step: 1, defaultValue: 60, hint: 'How far each scan line shifts' },
+    { key: 'frequency', label: 'Frequency', min: 1, max: 50, step: 1, defaultValue: 3, hint: 'Oscillation frequency of the offset pattern' },
+    { key: 'directionX', label: 'X', min: -100, max: 100, step: 1, defaultValue: 80, hint: 'Horizontal scan direction', dragBind: 'x' },
+    { key: 'directionY', label: 'Y', min: -100, max: 100, step: 1, defaultValue: 0, hint: 'Vertical scan direction', dragBind: 'y' },
   ],
   modes: [
     { key: 'mode', modes: ['Linear', 'Sine', 'Spiral'], defaultIndex: 0 },

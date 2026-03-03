@@ -2,7 +2,7 @@
  * Shared types for the pixel effects system.
  */
 
-export type InteractionType = 'none' | 'directional' | 'area-paint' | 'smear';
+export type InteractionType = 'none' | 'directional' | 'area-paint' | 'smear' | 'point-fill';
 
 export type EffectConfig = Record<string, number>;
 
@@ -23,6 +23,8 @@ export interface SliderDef {
   hint?: string;
   /** For 2D effects: bind this slider to a drag axis so it updates live during drag */
   dragBind?: 'x' | 'y';
+  /** When true, the drag-distance → intensity mapping skips this slider */
+  noIntensityMap?: boolean;
 }
 
 export interface ModeDef {

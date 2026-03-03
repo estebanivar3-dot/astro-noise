@@ -144,8 +144,10 @@ export const datamoshDef: EffectToolDef = {
   effect: datamoshEffect,
   sliders: [
     { key: 'intensity', label: 'Intensity', min: 0, max: 200, step: 1, defaultValue: 80, hint: 'Strength of motion vector displacement' },
-    { key: 'blockSize', label: 'Block Size', min: 8, max: 64, step: 1, defaultValue: 16, hint: 'Codec block size (8=H.264, 16=MPEG)' },
+    { key: 'blockSize', label: 'Block Size', min: 4, max: 128, step: 1, defaultValue: 16, hint: 'Codec block size (smaller = finer)' },
     { key: 'decay', label: 'Decay', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'Smear persistence — higher = longer streaks' },
+    { key: 'directionX', label: 'X', min: -100, max: 100, step: 1, defaultValue: 80, hint: 'Horizontal smear direction', dragBind: 'x' },
+    { key: 'directionY', label: 'Y', min: -100, max: 100, step: 1, defaultValue: 0, hint: 'Vertical smear direction', dragBind: 'y' },
   ],
   modes: [
     { key: 'mode', modes: ['Directional', 'Horizontal', 'Melt'], defaultIndex: 0 },

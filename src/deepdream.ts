@@ -203,9 +203,6 @@ export async function deepDream(
 ): Promise<ImageData> {
   const { layers, intensity, iterations, octaves, octaveScale } = config;
 
-  const tensorsBefore = tf.memory().numTensors;
-  console.log(`[deepDream] start — tensors: ${tensorsBefore}`);
-
   const origWidth = sourceImageData.width;
   const origHeight = sourceImageData.height;
   const S = PROCESSING_SIZE; // 512 — must match model's input_shape
@@ -297,21 +294,11 @@ export async function deepDream(
     // End scope — all tracked tensors have been disposed manually above.
     tf.engine().endScope();
 
-    const tensorsAfter = tf.memory().numTensors;
-    console.log(
-      `[deepDream] done — tensors: ${tensorsAfter} (delta: ${tensorsAfter - tensorsBefore})`,
-    );
-
     return imageData;
   } catch (err) {
     // End scope — this disposes any tensors created since startScope().
     tf.engine().endScope();
 
-    const tensorsAfter = tf.memory().numTensors;
-    const leaked = tensorsAfter - tensorsBefore;
-    if (leaked > 0) {
-      console.warn(`[deepDream] cleaned up tensors after error (delta: ${leaked})`);
-    }
     throw err;
   }
 }

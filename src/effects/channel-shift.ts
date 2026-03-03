@@ -77,8 +77,8 @@ export const channelShiftDef: EffectToolDef = {
   effect: channelShiftEffect,
   sliders: [
     { key: 'intensity', label: 'Intensity', min: 0, max: 100, step: 1, defaultValue: 100, hint: 'Strength of channel separation' },
-    { key: 'shiftX', label: 'X', min: -300, max: 300, step: 1, defaultValue: 0, dragBind: 'x' },
-    { key: 'shiftY', label: 'Y', min: -300, max: 300, step: 1, defaultValue: 0, dragBind: 'y' },
+    { key: 'shiftX', label: 'X', min: -500, max: 500, step: 1, defaultValue: 0, dragBind: 'x' },
+    { key: 'shiftY', label: 'Y', min: -500, max: 500, step: 1, defaultValue: 0, dragBind: 'y' },
   ],
   modes: [
     { key: 'mode', modes: ['Split', 'Cross', 'Tri-angle', 'Circular'], defaultIndex: 0 },

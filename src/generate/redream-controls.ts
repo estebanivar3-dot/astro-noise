@@ -3,11 +3,17 @@
  *
  * Chains random destruction effects with randomized parameters.
  * No API calls, no credits — runs entirely in-browser.
+ *
+ * Features:
+ *   - Drag on canvas: horizontal = iterations, vertical = intensity
+ *   - Post-processing: opacity blend + tonal targeting
  */
 
 import type { Tool, ToolControls } from '../router.ts';
 import type { RedreamOptions } from './redream-engine.ts';
 import { createSlider, createSectionLabel, createDivider } from '../effects/ui-helpers.ts';
+import { createTonalControls } from '../effects/tonal-controls.ts';
+import { blendDreamResult } from './dream-blend.ts';
 
 // ---------------------------------------------------------------------------
 // Controls manager
@@ -20,6 +26,10 @@ export interface RedreamControlsManager {
   setProgress(status: string): void;
   setActionEnabled(enabled: boolean): void;
   setHasResult(has: boolean): void;
+  /** Store source + result for post-blend controls. */
+  setDreamImages(source: ImageData, dream: ImageData): void;
+  /** Get the blended result (with opacity + tonal applied). */
+  getBlendedResult(): ImageData | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,9 +40,11 @@ export function createRedreamTool(callbacks: {
   onRedream: () => void;
   onApply: () => void;
   onReset: () => void;
+  displayImageData: (img: ImageData) => void;
 }): Tool & { controls: RedreamControlsManager } {
   let iterationsInput: HTMLInputElement;
   let intensityInput: HTMLInputElement;
+  let opacityInput: HTMLInputElement;
   let redreamBtn: HTMLButtonElement;
   let applyBtn: HTMLButtonElement;
   let resetBtn: HTMLButtonElement;
@@ -40,6 +52,27 @@ export function createRedreamTool(callbacks: {
   let statusText: HTMLDivElement;
   let interactiveElements: (HTMLInputElement | HTMLButtonElement)[] = [];
   let imageLoaded = false;
+
+  // Post-blend state
+  const tonalCtrl = createTonalControls();
+  let blendSource: ImageData | null = null;
+  let blendDream: ImageData | null = null;
+
+  // Drag state
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragging = false;
+  let dragStartIter = 0;
+  let dragStartIntensity = 0;
+
+  /** Re-blend and display whenever opacity or tonal sliders change. */
+  function refreshBlend(): void {
+    if (!blendSource || !blendDream) return;
+    const opacity = parseFloat(opacityInput?.value ?? '100') / 100;
+    const tonalConfig = tonalCtrl.getConfig();
+    const blended = blendDreamResult(blendSource, blendDream, opacity, tonalConfig);
+    callbacks.displayImageData(blended);
+  }
 
   const controls: RedreamControlsManager = {
     getConfig(): RedreamOptions {
@@ -90,6 +123,18 @@ export function createRedreamTool(callbacks: {
       if (applyBtn) applyBtn.disabled = !has;
       if (resetBtn) resetBtn.disabled = !has;
     },
+
+    setDreamImages(source: ImageData, dream: ImageData): void {
+      blendSource = source;
+      blendDream = dream;
+    },
+
+    getBlendedResult(): ImageData | null {
+      if (!blendSource || !blendDream) return null;
+      const opacity = parseFloat(opacityInput?.value ?? '100') / 100;
+      const tonalConfig = tonalCtrl.getConfig();
+      return blendDreamResult(blendSource, blendDream, opacity, tonalConfig);
+    },
   };
 
   function updateRedreamEnabled(): void {
@@ -101,6 +146,50 @@ export function createRedreamTool(callbacks: {
   function onImageLoaded(): void {
     imageLoaded = true;
     updateRedreamEnabled();
+  }
+
+  // ---- Drag handlers (canvas interaction) ----
+
+  function onCanvasMouseDown(e: MouseEvent): void {
+    if (!imageLoaded) return;
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragStartIter = parseInt(iterationsInput.value, 10);
+    dragStartIntensity = parseInt(intensityInput.value, 10);
+    e.preventDefault();
+  }
+
+  function onCanvasMouseMove(e: MouseEvent): void {
+    if (!dragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+
+    // Horizontal drag → iterations (1-6)
+    const iterDelta = Math.round(dx / 60);
+    const newIter = Math.max(1, Math.min(6, dragStartIter + iterDelta));
+    iterationsInput.value = String(newIter);
+    // Update displayed value
+    const iterVal = iterationsInput.parentElement?.querySelector('.value');
+    if (iterVal) iterVal.textContent = String(newIter);
+
+    // Vertical drag → intensity (0-100), inverted (drag up = more)
+    const intDelta = Math.round(-dy / 2);
+    const newInt = Math.max(0, Math.min(100, dragStartIntensity + intDelta));
+    intensityInput.value = String(newInt);
+    const intVal = intensityInput.parentElement?.querySelector('.value');
+    if (intVal) intVal.textContent = String(newInt);
+  }
+
+  function onCanvasMouseUp(): void {
+    if (!dragging) return;
+    dragging = false;
+    // Auto-trigger re-dream on drag release if params changed
+    const curIter = parseInt(iterationsInput.value, 10);
+    const curInt = parseInt(intensityInput.value, 10);
+    if (curIter !== dragStartIter || curInt !== dragStartIntensity) {
+      callbacks.onRedream();
+    }
   }
 
   // ---- Tool interface ----
@@ -136,7 +225,7 @@ export function createRedreamTool(callbacks: {
       desc.style.fontSize = '0.75rem';
       desc.style.marginBottom = '8px';
       desc.style.lineHeight = '1.4';
-      desc.textContent = 'Chains random destruction effects with randomized parameters. Every click produces a unique result. Apply to lock it in.';
+      desc.textContent = 'Chains random destruction effects with randomized parameters. Drag on the canvas to adjust iterations (horizontal) and intensity (vertical), then release to re-dream.';
       controlsContainer.appendChild(desc);
 
       controlsContainer.appendChild(createDivider());
@@ -158,6 +247,21 @@ export function createRedreamTool(callbacks: {
       intensityInput = nInput;
       controlsContainer.appendChild(intGroup);
 
+      // ---- Post-processing: Opacity + Tonal ----
+      controlsContainer.appendChild(createDivider());
+      controlsContainer.appendChild(createSectionLabel('Post-Processing'));
+
+      const { group: opacityGroup, input: opInput } = createSlider(
+        'Opacity', 0, 100, 1, 100,
+        'Blend between source and re-dream result',
+      );
+      opacityInput = opInput;
+      opacityInput.addEventListener('input', () => refreshBlend());
+      controlsContainer.appendChild(opacityGroup);
+
+      tonalCtrl.mount(controlsContainer);
+      tonalCtrl.onChange(() => refreshBlend());
+
       // ---- Progress overlay ----
       progressGroup = document.createElement('div');
       progressGroup.className = 'progress-overlay';
@@ -169,6 +273,12 @@ export function createRedreamTool(callbacks: {
 
       progressGroup.appendChild(statusText);
       canvasContainer.appendChild(progressGroup);
+
+      // ---- Canvas drag interaction ----
+      canvasContainer.style.cursor = 'crosshair';
+      canvasContainer.addEventListener('mousedown', onCanvasMouseDown);
+      window.addEventListener('mousemove', onCanvasMouseMove);
+      window.addEventListener('mouseup', onCanvasMouseUp);
 
       // ---- Action buttons ----
       redreamBtn = document.createElement('button');
@@ -209,7 +319,15 @@ export function createRedreamTool(callbacks: {
       actionBar.appendChild(subRow);
 
       // ---- Track interactive elements ----
-      interactiveElements = [iterationsInput, intensityInput, redreamBtn, applyBtn, resetBtn];
+      interactiveElements = [
+        iterationsInput,
+        intensityInput,
+        opacityInput,
+        ...tonalCtrl.getInteractiveElements(),
+        redreamBtn,
+        applyBtn,
+        resetBtn,
+      ];
 
       return {
         setActionEnabled(enabled: boolean): void {
@@ -218,6 +336,10 @@ export function createRedreamTool(callbacks: {
 
         destroy(): void {
           window.removeEventListener('cvlt:image-loaded', onImageLoaded);
+          canvasContainer.removeEventListener('mousedown', onCanvasMouseDown);
+          window.removeEventListener('mousemove', onCanvasMouseMove);
+          window.removeEventListener('mouseup', onCanvasMouseUp);
+          canvasContainer.style.cursor = '';
           if (progressGroup.parentElement) {
             progressGroup.parentElement.removeChild(progressGroup);
           }

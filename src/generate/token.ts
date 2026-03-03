@@ -74,7 +74,7 @@ export function buildTokenSection(
       const link = document.createElement('a');
       link.href = 'https://huggingface.co/settings/tokens';
       link.target = '_blank';
-      link.rel = 'noopener';
+      link.rel = 'noopener noreferrer';
       link.style.color = 'inherit';
       link.style.textDecoration = 'underline';
       link.textContent = 'get one free';

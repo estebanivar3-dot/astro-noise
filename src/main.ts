@@ -35,16 +35,20 @@ import { generateImage } from './generate/api.ts';
 import { pixelSortDef } from './effects/pixel-sort.ts';
 import { ditherDef } from './effects/dither.ts';
 import { displacementDef } from './effects/displacement.ts';
+import { meltDef } from './effects/melt.ts';
+import { erosionDef } from './effects/erosion.ts';
+import { turbulenceDef } from './effects/turbulence.ts';
+import { growthDef } from './effects/growth.ts';
+import { worleyDef } from './effects/worley.ts';
+import { reactionDiffusionDef } from './effects/reaction-diffusion.ts';
 import { createRedreamTool } from './generate/redream-controls.ts';
 import { redream } from './generate/redream-engine.ts';
 
 declare global {
   interface Window {
-    __cvlt: Record<string, unknown>;
+    __cvlt: { srcActive: boolean };
   }
 }
-
-console.log('CVLT TOOLS loaded');
 
 const canvasManager = createCanvasManager();
 
@@ -98,11 +102,11 @@ const dreamTool = createDeepDreamTool({
 
       dreamTool.controls.setDreaming(false);
       lastDreamResult = result;
+      dreamTool.controls.setDreamImages(sourceImage, result);
       canvasManager.displayImageData(result);
       dreamTool.controls.setHasResult(true);
       dreamTool.controls.setStatus('Dream complete — Apply to keep');
     } catch (err) {
-      console.error('DeepDream failed:', err);
       dreamTool.controls.setDreaming(false);
       const message = err instanceof Error ? err.message : 'Unknown error';
       dreamTool.controls.setStatus(`Error: ${message}`);
@@ -110,7 +114,14 @@ const dreamTool = createDeepDreamTool({
   },
 
   onApply: () => {
-    if (lastDreamResult) {
+    // Apply the blended result (with opacity + tonal) as the new source
+    const blended = dreamTool.controls.getBlendedResult();
+    if (blended) {
+      canvasManager.setSourceImage(blended);
+      lastDreamResult = null;
+      dreamTool.controls.setHasResult(false);
+      dreamTool.controls.setStatus('Applied — this is your new source');
+    } else if (lastDreamResult) {
       canvasManager.setSourceImage(lastDreamResult);
       lastDreamResult = null;
       dreamTool.controls.setHasResult(false);
@@ -124,6 +135,8 @@ const dreamTool = createDeepDreamTool({
     dreamTool.controls.setHasResult(false);
     dreamTool.controls.setStatus('');
   },
+
+  displayImageData: (img: ImageData) => canvasManager.displayImageData(img),
 });
 
 router.register(dreamTool);
@@ -173,7 +186,6 @@ const styleTool = createStyleTransferTool({
       styleTool.controls.setHasResult(true);
       styleTool.controls.setStatus('Stylization complete — Apply to keep');
     } catch (err) {
-      console.error('Style transfer failed:', err);
       styleTool.controls.setStylizing(false);
       const message = err instanceof Error ? err.message : 'Unknown error';
       styleTool.controls.setStatus(`Error: ${message}`);
@@ -249,6 +261,7 @@ const effectDefs = [
   chromaticDef, fillDef, datamoshDef,
   slitScanDef, fractalEchoDef, seamCarveDef, feedbackDef,
   pixelSortDef, ditherDef, displacementDef,
+  meltDef, erosionDef, turbulenceDef, growthDef, worleyDef, reactionDiffusionDef,
 ];
 
 for (const def of effectDefs) {
@@ -276,6 +289,7 @@ const redreamTool = createRedreamTool({
         redreamTool.controls.setProgress(status);
       });
       lastRedreamResult = result;
+      redreamTool.controls.setDreamImages(source, result);
       canvasManager.displayImageData(result);
       redreamTool.controls.setHasResult(true);
       redreamTool.controls.setStatus('Done — Apply to keep, or Re-Dream again');
@@ -288,7 +302,14 @@ const redreamTool = createRedreamTool({
   },
 
   onApply: () => {
-    if (lastRedreamResult) {
+    // Apply the blended result (with opacity + tonal) as the new source
+    const blended = redreamTool.controls.getBlendedResult();
+    if (blended) {
+      canvasManager.setSourceImage(blended);
+      lastRedreamResult = null;
+      redreamTool.controls.setHasResult(false);
+      redreamTool.controls.setStatus('Applied — this is your new source');
+    } else if (lastRedreamResult) {
       canvasManager.setSourceImage(lastRedreamResult);
       lastRedreamResult = null;
       redreamTool.controls.setHasResult(false);
@@ -302,17 +323,19 @@ const redreamTool = createRedreamTool({
     redreamTool.controls.setHasResult(false);
     redreamTool.controls.setStatus('');
   },
+
+  displayImageData: (img: ImageData) => canvasManager.displayImageData(img),
 });
 
 router.register(redreamTool);
 
 // ---------------------------------------------------------------------------
-// Activate default tool and expose debug API
+// Activate default tool
 // ---------------------------------------------------------------------------
 
 router.activate('deepdream');
 
-window.__cvlt = { canvasManager, router, srcActive: false };
+window.__cvlt = { srcActive: false };
 
 // ---------------------------------------------------------------------------
 // Global SRC (Show Original) — hold to preview source image
@@ -406,14 +429,12 @@ function updateStylizeButton(): void {
 }
 
 window.addEventListener('cvlt:image-loaded', () => {
-  console.log('Image loaded \u2014 source ready');
   imageReady = true;
   updateDreamButton();
   updateStylizeButton();
 });
 
 window.addEventListener('cvlt:style-selected', () => {
-  console.log('Style image selected');
   styleImageReady = true;
   updateStylizeButton();
 });
@@ -427,7 +448,6 @@ async function initModel(): Promise<DreamModel | null> {
 
   try {
     await tf.setBackend('webgl');
-    console.log('TF.js backend:', tf.getBackend());
 
     const loaded = await loadDreamModel((fraction: number) => {
       const pct = Math.round(fraction * 100);
@@ -435,10 +455,8 @@ async function initModel(): Promise<DreamModel | null> {
     });
 
     dreamTool.controls.setModelLoading(false);
-    console.log('InceptionV3 model loaded successfully');
     return loaded;
-  } catch (err) {
-    console.error('Failed to load model:', err);
+  } catch (_err) {
     dreamTool.controls.setModelLoading(true, 'Failed to load model');
     return null;
   }
@@ -450,7 +468,6 @@ modelPromise.then((m) => {
   if (m) {
     model = m;
     modelReady = true;
-    window.__cvlt.model = m;
     updateDreamButton();
   }
 });
@@ -474,11 +491,9 @@ nav.addEventListener('click', (e: Event) => {
     queueMicrotask(async () => {
       // Dispose InceptionV3 before loading style models.
       if (model) {
-        console.log('[model-swap] Disposing InceptionV3 to free GPU memory');
         model.dispose();
         model = null;
         modelReady = false;
-        window.__cvlt.model = null;
         updateDreamButton();
       }
 
@@ -497,21 +512,17 @@ nav.addEventListener('click', (e: Event) => {
 
         // Stale check: user navigated away while we were loading.
         if (myGeneration !== modelSwapGeneration) {
-          console.log('[model-swap] Style load completed but generation is stale — disposing');
           loaded.dispose();
           styleModelLoading = false;
           return;
         }
 
-        console.log('Style Transfer models loaded successfully');
         styleModel = loaded;
         styleModelReady = true;
         styleModelLoading = false;
-        window.__cvlt.styleModel = loaded;
         updateStylizeButton();
         styleTool.controls.setStatus('Style models loaded — ready');
-      } catch (err) {
-        console.error('Failed to load style models:', err);
+      } catch (_err) {
         styleModelLoading = false;
         styleTool.controls.setButtonLabel('Model failed to load');
         styleTool.controls.setStatus('Failed to load style models');
@@ -521,29 +532,23 @@ nav.addEventListener('click', (e: Event) => {
     // Returning to DeepDream — dispose style models, reload InceptionV3.
     queueMicrotask(async () => {
       if (styleModel) {
-        console.log('[model-swap] Disposing style transfer models');
         styleModel.dispose();
         styleModel = null;
         styleModelReady = false;
         styleModelLoading = false;
-        window.__cvlt.styleModel = null;
       }
 
       const loaded = await initModel();
 
       // Stale check
       if (myGeneration !== modelSwapGeneration) {
-        if (loaded) {
-          console.log('[model-swap] Dream model load completed but generation is stale — disposing');
-          loaded.dispose();
-        }
+        if (loaded) loaded.dispose();
         return;
       }
 
       if (loaded) {
         model = loaded;
         modelReady = true;
-        window.__cvlt.model = loaded;
         updateDreamButton();
       }
     });
@@ -551,19 +556,15 @@ nav.addEventListener('click', (e: Event) => {
     // Switching to a glitch tool — free GPU memory if models are loaded
     queueMicrotask(() => {
       if (model) {
-        console.log('[model-swap] Disposing InceptionV3 for glitch tool');
         model.dispose();
         model = null;
         modelReady = false;
-        window.__cvlt.model = null;
       }
       if (styleModel) {
-        console.log('[model-swap] Disposing style models for glitch tool');
         styleModel.dispose();
         styleModel = null;
         styleModelReady = false;
         styleModelLoading = false;
-        window.__cvlt.styleModel = null;
       }
     });
   }
@@ -577,3 +578,19 @@ const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
 exportBtn.addEventListener('click', () => {
   exportCanvas(canvasManager.getCanvas(), 'png');
 });
+
+// ---------------------------------------------------------------------------
+// Mobile nav toggle
+// ---------------------------------------------------------------------------
+
+const hamburger = document.getElementById('mobile-hamburger');
+const mobileToolName = document.getElementById('mobile-tool-name');
+
+hamburger?.addEventListener('click', () => {
+  document.body.classList.toggle('nav-open');
+});
+
+window.addEventListener('cvlt:tool-changed', ((e: CustomEvent) => {
+  document.body.classList.remove('nav-open');
+  if (mobileToolName) mobileToolName.textContent = e.detail.label;
+}) as EventListener);

@@ -87,10 +87,7 @@ export function createRouter(deps: {
 
   function activate(toolId: string): void {
     const tool = tools.get(toolId);
-    if (!tool) {
-      console.warn(`[router] unknown tool: ${toolId}`);
-      return;
-    }
+    if (!tool) return;
 
     // Skip if already active
     if (activeTool?.id === toolId) return;
@@ -119,6 +116,12 @@ export function createRouter(deps: {
     activeLeftCleanup = tool.createLeftPanel(leftContent);
     activeControls = tool.createRightPanel(controlsContainer, actionBar, canvasContainer);
     activeTool = tool;
+
+    // Close mobile nav and notify header
+    document.body.classList.remove('nav-open');
+    window.dispatchEvent(new CustomEvent('cvlt:tool-changed', {
+      detail: { id: toolId, label: tool.label },
+    }));
   }
 
   function getActiveTool(): Tool | null {

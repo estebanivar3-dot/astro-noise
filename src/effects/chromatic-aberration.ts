@@ -67,8 +67,8 @@ const chromaticEffect: PixelEffect = {
             break;
           }
           default: {
-            // Uniform — constant offset everywhere
-            scale = offset * dragScale;
+            // Uniform — falloff adds edge emphasis (0 = constant everywhere)
+            scale = offset * dragScale * (1 + normDist * falloff);
             break;
           }
         }
@@ -93,8 +93,10 @@ const chromaticEffect: PixelEffect = {
 export const chromaticDef: EffectToolDef = {
   effect: chromaticEffect,
   sliders: [
-    { key: 'offset', label: 'Offset', min: 1, max: 50, step: 1, defaultValue: 10, hint: 'Base RGB channel separation distance' },
-    { key: 'falloff', label: 'Falloff', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'How much separation increases toward edges' },
+    { key: 'offset', label: 'Offset', min: 1, max: 200, step: 1, defaultValue: 15, hint: 'Base RGB channel separation distance' },
+    { key: 'falloff', label: 'Falloff', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'Edge emphasis — 0 is uniform, higher values increase separation near edges' },
+    { key: 'directionX', label: 'X', min: -100, max: 100, step: 1, defaultValue: 80, hint: 'Horizontal aberration direction', dragBind: 'x' },
+    { key: 'directionY', label: 'Y', min: -100, max: 100, step: 1, defaultValue: 0, hint: 'Vertical aberration direction', dragBind: 'y' },
   ],
   modes: [
     { key: 'mode', modes: ['Uniform', 'Radial', 'Barrel'], defaultIndex: 0 },

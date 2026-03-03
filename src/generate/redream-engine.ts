@@ -55,10 +55,14 @@ export function redream(
     const config: Record<string, number> = {};
 
     for (const s of def.sliders) {
-      // Anchor at default, drift toward random target based on intensity
-      const randomTarget = s.min + Math.random() * (s.max - s.min);
+      // Use a compressed range around the default — only 50% of the headroom
+      // so wider slider ranges don't make Re-Dream too extreme
+      const headroomAbove = (s.max - s.defaultValue) * 0.5;
+      const headroomBelow = (s.defaultValue - s.min) * 0.5;
+      const effMin = s.defaultValue - headroomBelow;
+      const effMax = s.defaultValue + headroomAbove;
+      const randomTarget = effMin + Math.random() * (effMax - effMin);
       const value = s.defaultValue + intensity * (randomTarget - s.defaultValue);
-      // Snap to step and clamp
       config[s.key] = Math.max(s.min, Math.min(s.max,
         Math.round(value / s.step) * s.step,
       ));

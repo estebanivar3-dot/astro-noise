@@ -21,6 +21,10 @@ export interface BrushController {
   setDirectionMode(mode: DirectionMode): void;
   getMask(): Float32Array | null;
   getDirection(): { x: number; y: number };
+  /** Set direction externally (e.g. when user manually adjusts sliders). */
+  setDirection(x: number, y: number): void;
+  /** Whether the user is currently dragging on the canvas. */
+  isDragging(): boolean;
   getCanvas(): HTMLCanvasElement | null;
   clearMask(): void;
   setMask(mask: Float32Array): void;
@@ -172,7 +176,15 @@ export function createBrushController(): BrushController {
         }
         dragStartCallback?.();
 
-        if (interactionType === 'directional' && directionMode === 'absolute' && canvas) {
+        if (interactionType === 'point-fill') {
+          // Record absolute click coordinates — the effect uses these as the
+          // flood-fill seed point. No drag behaviour; bake immediately.
+          directionX = x;
+          directionY = y;
+          changeCallback?.();
+          isDrawing = false;
+          strokeEndCallback?.();
+        } else if (interactionType === 'directional' && directionMode === 'absolute' && canvas) {
           directionX = x - canvas.width / 2;
           directionY = y - canvas.height / 2;
           changeCallback?.();
@@ -245,9 +257,6 @@ export function createBrushController(): BrushController {
         window.removeEventListener('mouseup', onMouseUp);
       }
       removeCursorOverlay();
-      if (typeof window !== 'undefined' && window.__cvlt) {
-        window.__cvlt.brushInteraction = 'none';
-      }
       canvas = null;
       onMouseDown = null;
       onMouseMove = null;
@@ -258,10 +267,6 @@ export function createBrushController(): BrushController {
 
     setInteractionType(type: InteractionType): void {
       interactionType = type;
-      // Broadcast so canvas knows whether clicks should open the file picker
-      if (typeof window !== 'undefined' && window.__cvlt) {
-        window.__cvlt.brushInteraction = type;
-      }
       if (canvas) {
         if (type === 'none') {
           canvas.style.cursor = 'default';
@@ -283,6 +288,8 @@ export function createBrushController(): BrushController {
     setDirectionMode(mode: DirectionMode): void { directionMode = mode; },
     getMask(): Float32Array | null { return mask; },
     getDirection(): { x: number; y: number } { return { x: directionX, y: directionY }; },
+    setDirection(x: number, y: number): void { directionX = x; directionY = y; },
+    isDragging(): boolean { return isDrawing; },
     getCanvas(): HTMLCanvasElement | null { return canvas; },
 
     clearMask(): void {

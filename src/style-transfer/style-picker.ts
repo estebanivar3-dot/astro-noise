@@ -178,7 +178,6 @@ export function createStylePicker(
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      console.error('Failed to load style image:', file.name);
     };
     img.src = url;
   }

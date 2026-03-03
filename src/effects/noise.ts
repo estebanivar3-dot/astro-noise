@@ -104,7 +104,7 @@ export const noiseDef: EffectToolDef = {
   effect: noiseEffect,
   sliders: [
     { key: 'amount', label: 'Amount', min: 1, max: 100, step: 1, defaultValue: 30, hint: 'How much noise to add' },
-    { key: 'scale', label: 'Grain Size', min: 1, max: 32, step: 1, defaultValue: 1, hint: 'Size of noise particles' },
+    { key: 'scale', label: 'Grain Size', min: 1, max: 64, step: 1, defaultValue: 1, hint: 'Size of noise particles' },
   ],
   modes: [
     { key: 'mode', modes: ['Gaussian', 'Salt & Pepper', 'Film Grain', 'Color Noise'], defaultIndex: 0 },

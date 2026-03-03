@@ -3,14 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Browser-based image destruction toolkit — neural style transfer, glitch effects, pixel sorting, and 30 algorithmic tools for creative image processing." />
+  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="referrer" content="no-referrer" />
+  <meta property="og:title" content="ASTRO NOISE — Image Destruction Toolkit" />
+  <meta property="og:description" content="30 browser-based tools for creative image destruction — neural networks, glitch, pixel sort, and organic effects. No uploads, fully client-side." />
+  <meta property="og:type" content="website" />
   <title>ASTRO NOISE</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=block" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◈</text></svg>" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <div id="app">
+    <div class="mobile-header" id="mobile-header">
+      <button class="mobile-hamburger" id="mobile-hamburger" aria-label="Menu">☰</button>
+      <span class="mobile-brand">ASTRO NOISE</span>
+      <span class="mobile-tool-name" id="mobile-tool-name">DeepDream</span>
+    </div>
     <main class="app-main">
       <aside class="panel-left">
         <div class="sidebar-header">
@@ -58,6 +67,15 @@
             <a class="nav-item" data-tool="pixel-sort"><span class="item-num">22</span><span class="item-label">Pixel Sort</span></a>
             <a class="nav-item" data-tool="dither"><span class="item-num">23</span><span class="item-label">Dither</span></a>
             <a class="nav-item" data-tool="displacement"><span class="item-num">24</span><span class="item-label">Displacement</span></a>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-header"><span class="nav-group-label">Organic</span><span class="nav-group-line"></span></div>
+            <a class="nav-item" data-tool="melt"><span class="item-num">25</span><span class="item-label">Melt</span></a>
+            <a class="nav-item" data-tool="erosion"><span class="item-num">26</span><span class="item-label">Erosion</span></a>
+            <a class="nav-item" data-tool="turbulence"><span class="item-num">27</span><span class="item-label">Turbulence</span></a>
+            <a class="nav-item" data-tool="growth"><span class="item-num">28</span><span class="item-label">Growth</span></a>
+            <a class="nav-item" data-tool="worley"><span class="item-num">29</span><span class="item-label">Worley</span></a>
+            <a class="nav-item" data-tool="reaction-diffusion"><span class="item-num">30</span><span class="item-label">Reaction-Diffusion</span></a>
           </div>
         </nav>
 

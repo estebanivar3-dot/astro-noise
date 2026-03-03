@@ -1,3 +1,40 @@
+/* === Font === */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-800.woff2') format('woff2');
+}
+
 /* === Reset & Base === */
 *, *::before, *::after {
   margin: 0;
@@ -811,4 +848,149 @@ select {
 @keyframes pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
+}
+
+/* === Mobile Header (hidden on desktop) === */
+.mobile-header {
+  display: none;
+}
+
+/* === Mobile Responsive === */
+@media (max-width: 768px) {
+  /* Mobile header */
+  .mobile-header {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: 48px;
+    background: var(--bg-dark);
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .mobile-hamburger {
+    background: none;
+    border: none;
+    color: var(--fg);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 8px;
+    line-height: 1;
+  }
+
+  .mobile-brand {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--fg);
+  }
+
+  .mobile-tool-name {
+    margin-left: auto;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+  }
+
+  /* Body scroll */
+  body {
+    overflow: auto;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  #app {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  /* Layout flip */
+  .app-main {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  /* Left panel → slide-in overlay */
+  .panel-left {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    width: 100%;
+    min-width: 0;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+  }
+
+  body.nav-open .panel-left {
+    transform: translateX(0);
+  }
+
+  /* Center panel */
+  .panel-center {
+    height: 45vh;
+    min-height: 200px;
+    padding: 8px;
+    flex: none;
+  }
+
+  /* Right panel */
+  .panel-right {
+    width: 100%;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Touch-friendly slider thumbs */
+  input[type="range"]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+
+  input[type="range"] {
+    height: 4px;
+  }
+
+  /* Touch-friendly nav items */
+  .nav-item {
+    padding: 12px 20px;
+  }
+
+  /* Touch-friendly buttons */
+  .btn {
+    min-height: 48px;
+  }
+
+  .mode-toggle .btn {
+    padding: 12px;
+  }
+
+  .btn-export {
+    min-height: 48px;
+  }
+
+  /* Hide decorative elements */
+  .corner-tr,
+  .corner-bl,
+  .panel-center::before,
+  .panel-center::after,
+  .canvas-info {
+    display: none;
+  }
+
+  /* Drop zone fills mobile canvas area */
+  .drop-zone {
+    width: 100%;
+    height: 100%;
+  }
 }

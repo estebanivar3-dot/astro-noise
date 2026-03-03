@@ -1,6 +1,10 @@
 /**
  * Dither — reduces image to a limited color palette using
  * Floyd-Steinberg error diffusion, ordered (Bayer) dithering, or halftone dots.
+ *
+ * The Strength slider (drag-bound to X) blends smoothly between the
+ * original and the dithered result — this is what the cursor controls,
+ * not the stepped Levels slider.
  */
 
 import type { PixelEffect, EffectConfig, EffectToolDef } from './types.ts';
@@ -34,27 +38,78 @@ const BAYER_8X8 = [
 const ditherEffect: PixelEffect = {
   id: 'dither',
   label: 'Dither',
-  interactionType: 'none',
+  interactionType: 'directional',
 
   apply(source: ImageData, config: EffectConfig): ImageData {
-    const levels = Math.round(clamp(config['levels'] ?? 2, 2, 16));
-    const scale = Math.round(clamp(config['scale'] ?? 4, 1, 8));
+    const levels = Math.round(clamp(config['levels'] ?? 4, 2, 16));
+    const scale = Math.round(clamp(config['scale'] ?? 4, 1, 16));
     const mode = config['mode'] ?? 0;
+    const strength = clamp((config['strength'] ?? 50) as number, 0, 100) / 100;
 
     const { width, height, data } = source;
     const out = new ImageData(width, height);
     const dst = out.data;
 
-    switch (mode) {
-      case 0:
-        floydSteinberg(data, dst, width, height, levels);
-        break;
-      case 1:
-        orderedDither(data, dst, width, height, levels, scale);
-        break;
-      case 2:
-        halftone(data, dst, width, height, levels, scale);
-        break;
+    if (mode === 0 && scale > 1) {
+      // Floyd-Steinberg with scale: downsample → dither → upsample (chunky pixel blocks)
+      const sw = Math.max(1, Math.ceil(width / scale));
+      const sh = Math.max(1, Math.ceil(height / scale));
+      const smallSrc = new Uint8ClampedArray(sw * sh * 4);
+      // Downsample with area-averaging
+      for (let sy = 0; sy < sh; sy++) {
+        for (let sx = 0; sx < sw; sx++) {
+          let rr = 0, gg = 0, bb = 0, aa = 0, count = 0;
+          for (let dy = 0; dy < scale; dy++) {
+            for (let dx = 0; dx < scale; dx++) {
+              const ox = sx * scale + dx;
+              const oy = sy * scale + dy;
+              if (ox < width && oy < height) {
+                const si = (oy * width + ox) * 4;
+                rr += data[si]; gg += data[si + 1]; bb += data[si + 2]; aa += data[si + 3];
+                count++;
+              }
+            }
+          }
+          const di = (sy * sw + sx) * 4;
+          smallSrc[di] = rr / count; smallSrc[di + 1] = gg / count;
+          smallSrc[di + 2] = bb / count; smallSrc[di + 3] = aa / count;
+        }
+      }
+      const smallDst = new Uint8ClampedArray(sw * sh * 4);
+      floydSteinberg(smallSrc, smallDst, sw, sh, levels);
+      // Upsample (nearest neighbor)
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const sx = Math.min(Math.floor(x / scale), sw - 1);
+          const sy = Math.min(Math.floor(y / scale), sh - 1);
+          const si = (sy * sw + sx) * 4;
+          const di = (y * width + x) * 4;
+          dst[di] = smallDst[si]; dst[di + 1] = smallDst[si + 1];
+          dst[di + 2] = smallDst[si + 2]; dst[di + 3] = smallDst[si + 3];
+        }
+      }
+    } else {
+      switch (mode) {
+        case 0:
+          floydSteinberg(data, dst, width, height, levels);
+          break;
+        case 1:
+          orderedDither(data, dst, width, height, levels, scale);
+          break;
+        case 2:
+          halftone(data, dst, width, height, levels, scale);
+          break;
+      }
+    }
+
+    // Blend dithered result with original using strength
+    if (strength < 1) {
+      const inv = 1 - strength;
+      for (let i = 0; i < width * height * 4; i += 4) {
+        dst[i]     = Math.round(data[i] * inv + dst[i] * strength);
+        dst[i + 1] = Math.round(data[i + 1] * inv + dst[i + 1] * strength);
+        dst[i + 2] = Math.round(data[i + 2] * inv + dst[i + 2] * strength);
+      }
     }
 
     return out;
@@ -204,9 +259,9 @@ function halftone(
         const ry = -x * sinA[ch] + y * cosA[ch];
 
         // Distance from nearest dot center
-        const cx = (rx % spacing + spacing) % spacing - spacing / 2;
-        const cy = (ry % spacing + spacing) % spacing - spacing / 2;
-        const dist = Math.sqrt(cx * cx + cy * cy);
+        const dotCx = (rx % spacing + spacing) % spacing - spacing / 2;
+        const dotCy = (ry % spacing + spacing) % spacing - spacing / 2;
+        const dist = Math.sqrt(dotCx * dotCx + dotCy * dotCy);
 
         // Dot radius proportional to ink density
         const density = channels[ch] / 255;
@@ -235,10 +290,12 @@ function halftone(
 export const ditherDef: EffectToolDef = {
   effect: ditherEffect,
   sliders: [
-    { key: 'levels', label: 'Levels', min: 2, max: 16, step: 1, defaultValue: 2, hint: 'Color depth per channel' },
-    { key: 'scale', label: 'Scale', min: 1, max: 8, step: 1, defaultValue: 4, hint: 'Pattern size (Ordered/Halftone)' },
+    { key: 'strength', label: 'Strength', min: 0, max: 100, step: 1, defaultValue: 50, hint: 'Effect intensity', dragBind: 'x' },
+    { key: 'levels', label: 'Levels', min: 2, max: 32, step: 1, defaultValue: 4, hint: 'Color depth per channel' },
+    { key: 'scale', label: 'Scale', min: 1, max: 32, step: 1, defaultValue: 4, hint: 'Pattern / block size', dragBind: 'y' },
   ],
   modes: [
     { key: 'mode', modes: ['Floyd-Steinberg', 'Ordered', 'Halftone'], defaultIndex: 0 },
   ],
+  dragMapping: '2d',
 };
